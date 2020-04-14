@@ -13,11 +13,14 @@ executable hackage-search
   build-depends:
     base >= 4.13 && <5,
     text,
+    servant,
     servant-server,
     warp,
     aeson,
     vector,
-    optparse-applicative
+    optparse-applicative,
+    bytestring,
+    process
   default-language:
     Haskell2010
   default-extensions:
@@ -27,6 +30,7 @@ executable hackage-search
     DataKinds
     NamedFieldPuns
     ApplicativeDo
+    MultiParamTypeClasses
   ghc-options:
     -Wall
     -threaded
