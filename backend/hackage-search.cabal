@@ -16,10 +16,8 @@ executable hackage-search
     servant,
     servant-server,
     warp,
-    aeson,
     vector,
     optparse-applicative,
-    bytestring,
     process
   default-language:
     Haskell2010

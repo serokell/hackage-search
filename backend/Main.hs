@@ -5,49 +5,45 @@ import Control.Applicative
 import Servant
 import Servant.Types.SourceT
 import Network.Wai.Handler.Warp
-import qualified Data.Aeson as JSON
 import qualified Options.Applicative as Opt
-import qualified Data.ByteString as ByteString
 import System.Process
 import Control.Monad.IO.Class
+import Data.Text (Text)
+import qualified Data.Text.IO as Text
 
 import Config
 
 type HackageSearchAPI =
-    "rg" :> Capture "pattern" String :> StreamGet NewlineFraming JSON JsonHandle
+    "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText LineHandle
   :<|>
     Raw -- front-end
 
 hackageSearchAPI :: Proxy HackageSearchAPI
 hackageSearchAPI = Proxy
 
-newtype JsonHandle = JsonHandle Handle
+newtype LineHandle = LineHandle Handle
 
-instance ToSourceIO JSON.Value JsonHandle where
-  toSourceIO (JsonHandle h) = fromStepT go
+instance ToSourceIO Text LineHandle where
+  toSourceIO (LineHandle h) = fromStepT go
     where
       go = Effect $ do
         eof <- hIsEOF h
         if eof then return Stop else do
-          s <- ByteString.hGetLine h
-          j <-
-            case JSON.decodeStrict s of
-              Nothing -> error ("JsonHandle: not JSON:\n" ++ show s)
-              Just j -> return j
-          return $ Yield j go
+          s <- Text.hGetLine h
+          return $ Yield s go
 
 hackageSearchServer :: Config -> Server HackageSearchAPI
 hackageSearchServer Config{configHackagePath, configFrontEndPath} =
   searchH :<|> frontendH
   where
-    searchH :: String -> Handler JsonHandle
+    searchH :: String -> Handler LineHandle
     searchH q = liftIO $ do
       (_, Just outH, _, _) <-
         createProcess ((proc "rg" ["--json", "--no-ignore", "--regexp", q])
           { cwd = Just configHackagePath,
             std_out = CreatePipe
           })
-      return (JsonHandle outH)
+      return (LineHandle outH)
     frontendH =
       serveDirectoryFileServer configFrontEndPath
 
