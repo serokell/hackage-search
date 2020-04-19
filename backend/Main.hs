@@ -14,7 +14,12 @@ import Control.Monad.IO.Class
 import Data.Text (Text)
 import qualified Data.Text.IO as Text
 
-import Config
+data Config =
+  Config {
+    configPort :: Int,
+    configHackagePath :: FilePath,
+    configFrontEndPath :: FilePath
+  }
 
 type HackageSearchAPI =
     "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText LineHandle

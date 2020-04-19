@@ -30,7 +30,7 @@ pkgs.stdenv.mkDerivation rec {
     mkdir -p "$out/backend/" "$out/frontend/"
 
     mkdir backend-build-artifacts
-    ghc "$src/backend/Main.hs" "$src/backend/Config.hs" \
+    ghc "$src/backend/Main.hs" \
       -outputdir backend-build-artifacts \
       -o "$out/backend/hackage-search"
 
@@ -47,6 +47,10 @@ pkgs.stdenv.mkDerivation rec {
     /* Frontend */
     pkgs.nodePackages.typescript
     pkgs.closurecompiler
+
+    /* Development */
+    pkgs.inotify-tools
+    pkgs.haskellPackages.html-validator-cli
   ];
   shellHook = ''
     export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH

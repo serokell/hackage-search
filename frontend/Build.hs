@@ -22,8 +22,15 @@ main = do
     Opt.execParser $
       Opt.info (configOptP <**> Opt.helper)
         (Opt.fullDesc <> Opt.header "Build the Hackage Search Front End")
-  callProcess "tsc" [srcDir </> "main.ts", "--outFile", "all.js"]
-  js_out <- readProcess "closure-compiler" ["all.js"] ""
+  callProcess "tsc"
+    [ "--alwaysStrict",
+      srcDir </> "main.ts",
+      "--outFile", "all.js" ]
+  js_out <-
+    readProcess "closure-compiler"
+      [ "--language_in", "ECMASCRIPT5_STRICT",
+        "all.js" ]
+      ""
   html_src <- Text.readFile (srcDir </> "index.html")
   let html_out = insert_js (Text.pack js_out) html_src
   Text.writeFile (outDir </> "index.html") html_out

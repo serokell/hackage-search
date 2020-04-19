@@ -1,10 +1,112 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title> Hackage Search </title>
+<style>
+@font-face {
+  font-family:srk-condensed;
+  src:url(/static/fonts/srk-cond-regular.woff) format("woff");
+  font-weight:400;
+  font-style:normal
+}
+body {
+  font-family: 'srk-condensed';
+}
+header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 20px;
+}
+#logo {
+  width: auto;
+  height: 3em;
+}
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.search {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.search-bar {
+  display: flex;
+  font-size: 1.5em;
+  border: 1px solid #888;
+  border-radius: 15px;
+  padding: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.search, #results {
+  width: 80%;
+  max-width: 800px;
+}
+#search-field {
+  border: 0;
+  font-family: monospace;
+  font-size: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+#search-field:focus {
+  outline: none;
+}
+#glass {
+  width: 1em;
+  height: auto;
+  margin-right: 10px;
+}
+a, a:visited {
+  color: #888;
+}
+a:hover {
+  color: rgb(227,48,27);
+}
+.match {
+  background-color: rgb(227,48,27);
+  color: white;
+}
+h3 {
+  margin: 0;
+}
+hr {
+  border: none;
+  border-top: 1px solid #888;
+  color: #888;
+  height: 0;
+}
+.result {
+  padding: 1em;
+}
+</style>
   </head>
   <body>
-    <h1>Hackage Search</h1>
+    <header>
+      <a href="https://serokell.io"> <svg xmlns="http://www.w3.org/2000/svg" width="284" height="113" viewBox="0 0 284 113" id="logo"><path fill-rule="evenodd" d="M22.54 112.46c5.6 0 9.94-4.48 9.94-9.94V89.86s.14-3.08-1.82-6.44L10.22 48.14V35.06h12.04v14.42h10.22V36.46c0-5.46-4.34-9.94-9.94-9.94H9.94C4.48 26.52 0 31 0 36.46v10.7s0 3.36 1.96 6.58l20.3 35.28v14.9H10.22V89.5H0v13.02c0 5.46 4.48 9.94 9.94 9.94h12.6zM66.5 95.62H52.08c-5.46 0-9.94-4.48-9.94-9.94V36.4c0-5.46 4.48-9.94 9.94-9.94H66.5c5.46 0 9.94 4.48 9.94 9.94v20.72c0 5.6-4.48 10.08-9.94 10.08H52.08v19.74h14.28V76.86h10.08v8.82c0 5.46-4.48 9.94-9.94 9.94zm-.14-37.24v-23.1H52.08v23.1h14.28zm30.8 37.24V35.28h15.26v-8.82h-6.16c-5.18 0-7.84 2.66-9.1 5.32v-5.32H87.08v69.16h10.08zm45.5 0h-14.28c-5.6 0-10.08-4.48-10.08-9.94V36.54c0-5.6 4.48-10.08 10.08-10.08h14.28c5.6 0 9.94 4.48 9.94 10.08v49.14c0 5.46-4.34 9.94-9.94 9.94zm0-8.68V35.28h-14.28v51.66h14.28zm55.44 8.68l-3.08-29.96c-.7-6.58-3.5-9.94-8.4-10.5l12.32-28.7H189l-12.04 28.56h-3.5V0h-9.94v95.62h9.94v-32.2h11.62l3.08 32.2h9.94zm32.48 0h-14.42c-5.46 0-9.94-4.48-9.94-9.94V36.4c0-5.46 4.48-9.94 9.94-9.94h14.42c5.46 0 9.94 4.48 9.94 9.94v20.72c0 5.6-4.48 10.08-9.94 10.08h-14.42v19.74h14.28V76.86h10.08v8.82c0 5.46-4.48 9.94-9.94 9.94zm-.14-37.24v-23.1h-14.28v23.1h14.28zm30.8 37.24V0h-10.08v95.62h10.08zm21.84 0H273V0h10.08v95.62zM42 112.54V104h241.08v8.54H42z" xmlns="http://www.w3.org/2000/svg"></path></svg> </a>
+    </header>
+    <main>
+      <h1> Hackage Search </h1>
+        <div class="search">
+          <div class="search-bar">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75.14 75.14" id="glass"><path d="M74.68 70.25L52.85 48.43a29.82 29.82 0 10-4.42 4.42l21.82 21.83a1.58 1.58 0 002.22 0l2.21-2.21a1.58 1.58 0 000-2.22zm-44.94-17a23.48 23.48 0 1123.48-23.51 23.5 23.5 0 01-23.48 23.48z" xmlns="http://www.w3.org/2000/svg"></path></svg>
+            <input type="text" id="search-field" autofocus>
+          </div>
+          <a href="https://docs.rs/regex/1/regex/#syntax"> Regex Syntax Reference </a>
+        </div>
+        <div id="results"></div>
+        <template id="result-template">
+          <div class="result">
+            <h3></h3>
+            <hr>
+            <code> </code>
+          </div>
+        </template>
+    </main>
     <script></script>
   </body>
 </html>
