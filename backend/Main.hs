@@ -1,3 +1,6 @@
+{-# LANGUAGE TypeFamilies, TypeOperators, PolyKinds, DataKinds,
+             NamedFieldPuns, ApplicativeDo, MultiParamTypeClasses #-}
+
 module Main where
 
 import System.IO
@@ -39,7 +42,7 @@ hackageSearchServer Config{configHackagePath, configFrontEndPath} =
     searchH :: String -> Handler LineHandle
     searchH q = liftIO $ do
       (_, Just outH, _, _) <-
-        createProcess ((proc "rg" ["--json", "--no-ignore", "--regexp", q])
+        createProcess ((proc "rg" ["--json", "--no-ignore", "--context", "2", "--regexp", q])
           { cwd = Just configHackagePath,
             std_out = CreatePipe
           })
