@@ -80,22 +80,48 @@ window.onload = function () {
     if(event.key === "Enter") {
       results.innerHTML = "";
       const resource = "/rg/" + encodeURIComponent(search_field.value);
-      fetch(resource).then(
-        response => response.text()
-      ).then(
-        s => {
-          const lines = s.split("\n").filter(s => s.length != 0);
-          for (const line of lines) {
-            const j = <RgOut>JSON.parse(line);
-            process_rg_out(result_template, j, results);
-          }
-        }
-      );
+      fetch_and_process(resource, results);
     }
   }
 }
 
-function process_rg_out(result_template: HTMLTemplateElement, j: RgOut, results: Element) {
+async function fetch_and_process(resource: string, results: Element) {
+  const response = await fetch(resource);
+  for await (const line of read_lines(response.body)) {
+    const j = <RgOut>JSON.parse(line);
+    process_rg_out(j, results);
+  }
+}
+
+async function* read_lines(stream: ReadableStream<Uint8Array>): AsyncIterable<string> {
+  const reader = stream.getReader();
+  let buf = new Uint8Array();
+  while (true) {
+    let chunk = await reader.read();
+    if (chunk.done) break;
+    buf = append_Uint8Array(buf, chunk.value);
+    while (true) {
+      const pivot = buf.indexOf(10);
+      if (pivot === -1) break;
+      const line = buf.slice(0, pivot);
+      yield utf8_decoder.decode(line);
+      buf = buf.slice(pivot+1);
+    }
+  }
+  if (buf.length != 0) yield utf8_decoder.decode(buf);
+}
+
+function append_Uint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const iterable: Iterable<number> =
+    function* () {
+      yield* a;
+      yield* b;
+    }();
+  return new Uint8Array(iterable);
+}
+
+function process_rg_out(j: RgOut, results: Element) {
+  const result_template = <HTMLTemplateElement>document.getElementById("result-template");
   const result = <Element>result_template.content.cloneNode(true);
   if (j.type === "match") {
     result.querySelector("h3").textContent = j.data.path.text;

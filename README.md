@@ -9,5 +9,7 @@ nix-build
 ## Development
 
 ```
-nix-shell --command "tsc --noEmit -w frontend/main.ts"
+nix-shell
+cd frontend
+tsc --noEmit -w
 ```

@@ -23,12 +23,11 @@ main = do
       Opt.info (configOptP <**> Opt.helper)
         (Opt.fullDesc <> Opt.header "Build the Hackage Search Front End")
   callProcess "tsc"
-    [ "--alwaysStrict",
-      srcDir </> "main.ts",
+    [ "--alwaysStrict", "-p", srcDir,
       "--outFile", "all.js" ]
   js_out <-
     readProcess "closure-compiler"
-      [ "--language_in", "ECMASCRIPT5_STRICT",
+      [ "--language_in", "ECMASCRIPT6_STRICT",
         "all.js" ]
       ""
   html_src <- Text.readFile (srcDir </> "index.html")
