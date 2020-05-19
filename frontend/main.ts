@@ -71,25 +71,30 @@ type RgOutStats =
     matches: number
   }
 
+interface PathElementMap {
+  [index: string]: Element;
+}
+
 window.onload = function () {
   const result_template = <HTMLTemplateElement>document.getElementById("result-template");
   const results = document.getElementById("results");
   const search_field = <HTMLInputElement>document.getElementById("search-field");
+  let result_map: PathElementMap = {}
   search_field.onkeydown =
   event => {
     if(event.key === "Enter") {
       results.innerHTML = "";
       const resource = "/rg/" + encodeURIComponent(search_field.value);
-      fetch_and_process(resource, results);
+      fetch_and_process(resource, result_map, results);
     }
   }
 }
 
-async function fetch_and_process(resource: string, results: Element) {
+async function fetch_and_process(resource: string, result_map: PathElementMap, results: Element) {
   const response = await fetch(resource);
   for await (const line of read_lines(response.body)) {
     const j = <RgOut>JSON.parse(line);
-    process_rg_out(j, results);
+    process_rg_out(j, result_map, results);
   }
 }
 
@@ -122,14 +127,29 @@ function append_Uint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
   return new Uint8Array(iterable);
 }
 
-function process_rg_out(j: RgOut, results: Element) {
-  const result_template = <HTMLTemplateElement>document.getElementById("result-template");
-  const result = <Element>result_template.content.cloneNode(true);
-  if (j.type === "match") {
+function process_rg_out(j: RgOut, result_map: PathElementMap, results: Element) {
+  if (j.type === "begin") {
+    const result_template = <HTMLTemplateElement>document.getElementById("result-template");
+    const result = document.createElement("div");
+    result.appendChild(result_template.content.cloneNode(true));
+    const path = j.data.path.text;
+    result_map[path] = result;
     result.querySelector("h3").textContent = j.data.path.text;
-    let fmtstr = result.querySelector("code");
-    highlight_match(j.data.lines.text, fmtstr, j.data.submatches);
     results.appendChild(result);
+  }
+  if (j.type === "context") {
+    const path = j.data.path.text;
+    const line = document.createElement("span");
+    line.classList.add("line");
+    line.textContent = j.data.lines.text;
+    result_map[path].querySelector("code").appendChild(line);
+  }
+  if (j.type === "match") {
+    const path = j.data.path.text;
+    const line = document.createElement("span");
+    line.classList.add("line");
+    highlight_match(j.data.lines.text, line, j.data.submatches);
+    result_map[path].querySelector("code").appendChild(line);
   }
 }
 
