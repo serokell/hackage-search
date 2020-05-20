@@ -32,7 +32,8 @@ pkgs.stdenv.mkDerivation rec {
     mkdir backend-build-artifacts
     ghc "$src/backend/Main.hs" \
       -outputdir backend-build-artifacts \
-      -o "$out/backend/hackage-search"
+      -o "$out/backend/hackage-search" \
+      -Wall -threaded -O2
 
     runhaskell "$src/frontend/Build.hs" --src "$src/frontend" --out "$out/frontend"
   '';
