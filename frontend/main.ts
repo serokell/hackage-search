@@ -24,6 +24,8 @@ type RgOut =
       data: {
         path: RgOutData,
         lines: RgOutData,
+        line_number: number,
+        absolute_offset: number,
         submatches: RgOutMatch[]
       }
     }
@@ -71,15 +73,21 @@ type RgOutStats =
     matches: number
   }
 
-interface PathElementMap {
-  [index: string]: Element;
+interface PathResultMap {
+  [index: string]: Result;
 }
+
+type Result =
+  {
+    element: Element
+    last_line_number: number | null;
+  }
 
 window.onload = function () {
   const result_template = <HTMLTemplateElement>document.getElementById("result-template");
   const results = document.getElementById("results");
   const search_field = <HTMLInputElement>document.getElementById("search-field");
-  let result_map: PathElementMap = {}
+  let result_map: PathResultMap = {}
   search_field.onkeydown =
   event => {
     if(event.key === "Enter") {
@@ -90,7 +98,7 @@ window.onload = function () {
   }
 }
 
-async function fetch_and_process(resource: string, result_map: PathElementMap, results: Element) {
+async function fetch_and_process(resource: string, result_map: PathResultMap, results: Element) {
   const response = await fetch(resource);
   for await (const line of read_lines(response.body)) {
     const j = <RgOut>JSON.parse(line);
@@ -127,46 +135,70 @@ function append_Uint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
   return new Uint8Array(iterable);
 }
 
-function process_rg_out(j: RgOut, result_map: PathElementMap, results: Element) {
+function process_rg_out(j: RgOut, result_map: PathResultMap, results: Element) {
   if (j.type === "begin") {
-    const result_template = <HTMLTemplateElement>document.getElementById("result-template");
-    const result = document.createElement("div");
-    result.appendChild(result_template.content.cloneNode(true));
     const path = j.data.path.text;
-    result_map[path] = result;
-    result.querySelector("h3").textContent = j.data.path.text;
-    results.appendChild(result);
+    const result = instantiate_result_template(j.data.path.text);
+    result_map[path] = { element: result, last_line_number: null };
+    results.append(result);
   }
   if (j.type === "context") {
     const path = j.data.path.text;
-    const line = document.createElement("span");
-    line.classList.add("line");
+    const line = document.createElement("code");
     line.textContent = j.data.lines.text;
-    result_map[path].querySelector("code").appendChild(line);
+    const line_of_code = instantiate_line_of_code_template(j.data.line_number, line);
+    append_line_of_code(result_map, path, j.data.line_number, line_of_code);
   }
   if (j.type === "match") {
     const path = j.data.path.text;
-    const line = document.createElement("span");
-    line.classList.add("line");
+    const line = document.createElement("code");
     highlight_match(j.data.lines.text, line, j.data.submatches);
-    result_map[path].querySelector("code").appendChild(line);
+    const line_of_code = instantiate_line_of_code_template(j.data.line_number, line);
+    append_line_of_code(result_map, path, j.data.line_number, line_of_code);
   }
+}
+
+function append_line_of_code(result_map: PathResultMap, path: string, line_number: number, line_of_code: Node) {
+  const result = result_map[path];
+  const result_code = result.element.querySelector(".result-code");
+  const continuous = result.last_line_number === null || result.last_line_number === line_number - 1;
+  if (!continuous) {
+    const omission = clone_template("omission-template");
+    result_map[path].element.querySelector(".result-code").append(omission);
+  }
+  result_code.append(line_of_code);
+  result.last_line_number = line_number;
+}
+
+function instantiate_result_template(header: string): Element {
+  const result = clone_template("result-template");
+  result.querySelector("h3").textContent = header;
+  return result;
+}
+
+function instantiate_line_of_code_template(line_number: number, line: Node): Element {
+  const line_of_code = clone_template("line-of-code-template");
+  line_of_code.querySelector(".line-number").textContent = line_number.toString();
+  line_of_code.querySelector(".line").append(line);
+  return line_of_code;
+}
+
+function clone_template(id: string): Element {
+  const template = <HTMLTemplateElement>document.getElementById(id);
+  const instance = <DocumentFragment>template.content.cloneNode(true);
+  return instance.firstElementChild;
 }
 
 function highlight_match(str: string, fmtstr: Element, submatches: RgOutMatch[]) {
   const rawstr = utf8_encoder.encode(str);
   let lastpos = 0;
   for (const sub of submatches) {
-    fmtstr.appendChild(
-      document.createTextNode(utf8_decoder.decode(rawstr.slice(lastpos, sub.start)))
-    );
+    fmtstr.append(utf8_decoder.decode(rawstr.slice(lastpos, sub.start)));
     let fmtspan = document.createElement("span");
     fmtspan.classList.add("match");
     fmtspan.textContent = utf8_decoder.decode(rawstr.slice(sub.start, sub.end));
-    fmtstr.appendChild(fmtspan);
+    fmtstr.append(fmtspan);
     lastpos = sub.end;
   }
-  fmtstr.appendChild(
-    document.createTextNode(utf8_decoder.decode(rawstr.slice(lastpos)))
-  );
+  fmtstr.append(utf8_decoder.decode(rawstr.slice(lastpos)));
 }

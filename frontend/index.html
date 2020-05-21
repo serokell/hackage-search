@@ -71,8 +71,19 @@ a:hover {
   background-color: rgb(227,48,27);
   color: white;
 }
+.line-number {
+  user-select: none;
+  font-family: monospace;
+  background: #eee;
+  color: #888;
+  padding: 3px;
+  text-align: right;
+}
 .line {
-  display: block;
+  padding-left: 10px;
+}
+.result-code {
+  border-collapse: collapse;
 }
 h3 {
   margin: 0;
@@ -92,6 +103,9 @@ hr {
 @keyframes fadein {
   from { opacity: 0 }
   to   { opacity: 1 }
+}
+.omission-bar {
+  border-top: 1px dashed #ccc;
 }
 </style>
   </head>
@@ -113,8 +127,21 @@ hr {
           <div class="result">
             <h3></h3>
             <hr>
-            <code> </code>
+            <table class="result-code"></table>
           </div>
+        </template>
+        <template id="line-of-code-template">
+          <tr>
+            <td class="line-number"></td>
+            <td class="line"></td>
+          </tr>
+        </template>
+        <template id="omission-template">
+          <tr>
+            <td colspan="2">
+              <hr class="omission-bar">
+            </td>
+          </tr>
         </template>
     </main>
     <script></script>
