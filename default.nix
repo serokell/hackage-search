@@ -12,6 +12,7 @@ let
 
   haskell_inputs = p: [
     p.servant-server
+    p.http-client-tls
   ];
 
   haskellPackages =
@@ -52,6 +53,7 @@ pkgs.stdenv.mkDerivation rec {
     /* Development */
     pkgs.inotify-tools
     pkgs.haskellPackages.html-validator-cli
+    pkgs.ghcid
   ];
   shellHook = ''
     export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH
