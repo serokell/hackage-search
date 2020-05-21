@@ -85,13 +85,15 @@ type Result =
 
 window.onload = function () {
   const result_template = <HTMLTemplateElement>document.getElementById("result-template");
-  const results = document.getElementById("results");
   const search_field = <HTMLInputElement>document.getElementById("search-field");
-  let result_map: PathResultMap = {}
   search_field.onkeydown =
   event => {
     if(event.key === "Enter") {
-      results.innerHTML = "";
+      const result_map: PathResultMap = {}
+      const old_results = document.getElementById("results");
+      const results = document.createElement("div");
+      results.id = "results";
+      old_results.parentNode.replaceChild(results, old_results);
       const resource = "/rg/" + encodeURIComponent(search_field.value);
       fetch_and_process(resource, result_map, results);
     }
@@ -99,8 +101,14 @@ window.onload = function () {
 }
 
 async function fetch_and_process(resource: string, result_map: PathResultMap, results: Element) {
-  const response = await fetch(resource);
+  const controller = new AbortController();
+  const response = await fetch(resource, { signal: controller.signal });
   for await (const line of read_lines(response.body)) {
+    if (!document.body.contains(results)) {
+      console.log("Canceling query:", resource);
+      controller.abort();
+      break;
+    }
     const j = <RgOut>JSON.parse(line);
     process_rg_out(j, result_map, results);
   }
