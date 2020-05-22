@@ -1,3 +1,8 @@
+$neutral-color: #888;
+$bright-color: rgb(227,48,27);
+$line-number-background-color: #eee;
+$separator-color: #ccc;
+
 @font-face {
   font-family:srk-condensed;
   src:url(/static/fonts/srk-cond-regular.woff) format("woff");
@@ -35,7 +40,7 @@ main {
 .search-bar {
   display: flex;
   font-size: 1.5em;
-  border: 1px solid #888;
+  border: 1px solid $neutral-color;
   border-radius: 15px;
   padding: 10px;
   width: 100%;
@@ -66,23 +71,23 @@ main {
 }
 
 a, a:visited {
-  color: #888;
+  color: $neutral-color;
 }
 
 a:hover {
-  color: rgb(227,48,27);
+  color: $bright-color;
 }
 
 .match {
-  background-color: rgb(227,48,27);
+  background-color: $bright-color;
   color: white;
 }
 
 .line-number {
   user-select: none;
   font-family: monospace;
-  background: #eee;
-  color: #888;
+  background: $line-number-background-color;
+  color: $neutral-color;
   padding: 3px;
   text-align: right;
 }
@@ -101,8 +106,8 @@ h3 {
 
 hr {
   border: none;
-  border-top: 1px solid #888;
-  color: #888;
+  border-top: 1px solid $neutral-color;
+  color: $neutral-color;
   height: 0;
 }
 
@@ -120,5 +125,5 @@ hr {
 }
 
 .omission-bar {
-  border-top: 1px dashed #ccc;
+  border-top: 1px dashed $separator-color;
 }
