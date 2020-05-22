@@ -49,6 +49,7 @@ pkgs.stdenv.mkDerivation rec {
     /* Frontend */
     pkgs.nodePackages.typescript
     pkgs.closurecompiler
+    pkgs.sass
 
     /* Development */
     pkgs.inotify-tools

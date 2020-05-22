@@ -30,8 +30,17 @@ main = do
       [ "--language_in", "ECMASCRIPT6_STRICT",
         "all.js" ]
       ""
+  css_out <-
+    readProcess "sass"
+      [ "--style", "compressed",
+        srcDir </> "main.scss" ]
+      ""
   html_src <- Text.readFile (srcDir </> "index.html")
-  let html_out = insert_js (Text.pack js_out) html_src
+  let html_out =
+        insert_css (Text.pack css_out) $
+        insert_js (Text.pack js_out) $
+        html_src
   Text.writeFile (outDir </> "index.html") html_out
 
+insert_css css = Text.replace "<style></style>" ("<style>" <> css <> "</style>")
 insert_js js = Text.replace "<script></script>" ("<script>" <> js <> "</script>")

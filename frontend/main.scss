@@ -1,0 +1,124 @@
+@font-face {
+  font-family:srk-condensed;
+  src:url(/static/fonts/srk-cond-regular.woff) format("woff");
+  font-weight:400;
+  font-style:normal
+}
+
+body {
+  font-family: 'srk-condensed';
+}
+
+header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 20px;
+}
+
+#logo {
+  width: auto;
+  height: 3em;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.search {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.search-bar {
+  display: flex;
+  font-size: 1.5em;
+  border: 1px solid #888;
+  border-radius: 15px;
+  padding: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.search, #results {
+  width: 80%;
+  max-width: 800px;
+}
+
+#search-field {
+  border: 0;
+  font-family: monospace;
+  font-size: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#search-field:focus {
+  outline: none;
+}
+
+#glass {
+  width: 1em;
+  height: auto;
+  margin-right: 10px;
+}
+
+a, a:visited {
+  color: #888;
+}
+
+a:hover {
+  color: rgb(227,48,27);
+}
+
+.match {
+  background-color: rgb(227,48,27);
+  color: white;
+}
+
+.line-number {
+  user-select: none;
+  font-family: monospace;
+  background: #eee;
+  color: #888;
+  padding: 3px;
+  text-align: right;
+}
+
+.line {
+  padding-left: 10px;
+}
+
+.result-code {
+  border-collapse: collapse;
+}
+
+h3 {
+  margin: 0;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #888;
+  color: #888;
+  height: 0;
+}
+
+.result {
+  padding: 1em;
+}
+
+.result, .line {
+  animation: fadein 0.5s;
+}
+
+@keyframes fadein {
+  from { opacity: 0 }
+  to   { opacity: 1 }
+}
+
+.omission-bar {
+  border-top: 1px dashed #ccc;
+}
