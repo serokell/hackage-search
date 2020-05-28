@@ -3,17 +3,40 @@
 
 module Main where
 
+import Prelude hiding (log)
+import Control.Concurrent (myThreadId, getNumCapabilities)
+import Control.Exception
 import Data.Text (Text)
+import Data.Foldable
+import Data.IORef
+import qualified Data.List.Split as List
 import qualified Data.Text as Text
 import qualified Data.Aeson as JSON
 import qualified Data.Aeson.Types as JSON
 import qualified Network.HTTP.Client as HTTP
 import qualified Network.HTTP.Client.TLS as HTTP
 import qualified Network.HTTP.Types as HTTP
+import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Char8 as ByteString.Char8
+import qualified Data.ByteString.Lazy as ByteString.Lazy
+import qualified Distribution.Package as Cabal
+import qualified Distribution.Pretty as Cabal
+import qualified Distribution.PackageDescription.Parsec as Cabal
+import qualified Codec.Compression.GZip as GZip
+import qualified System.Log.FastLogger as Log
+import qualified Data.Time.Clock.System as Time
+import qualified Data.Time.Clock as Time
+import qualified Data.Time.Format as Time
+import Data.String (fromString)
+import Control.Concurrent.Async (forConcurrently_)
+import System.Process (callProcess)
+import System.Directory (removeFile)
 import System.Exit (die)
 
-newtype PackageName = PackageName Text
+newtype PackageName = PackageName { packageNameText :: Text }
+
+packageNameStr :: PackageName -> String
+packageNameStr = Text.unpack . packageNameText
 
 instance JSON.FromJSON PackageName where
   parseJSON (JSON.Object v) = do
@@ -23,20 +46,106 @@ instance JSON.FromJSON PackageName where
     JSON.prependFailure "parsing PackageName failed, " $
     JSON.typeMismatch "Object" invalid
 
+log :: Log.LoggerSet -> String -> IO ()
+log logger s = do
+  thread_id <- myThreadId
+  Log.pushLogStr logger (fromString ("[" ++ show thread_id ++ "] " ++ s ++ "\n"))
+
+dup :: a -> (a, a)
+dup x = (x, x)
+
+estimate :: Double -> Time.SystemTime -> Time.SystemTime -> String
+estimate progress_fraction time_of_start time_now = showSeconds seconds_remaining
+  where
+    showSeconds x = Time.formatTime Time.defaultTimeLocale "%mm" (Time.secondsToDiffTime x)
+    seconds_remaining = ceiling (seconds_total - seconds_passed)
+    seconds_total = seconds_passed / progress_fraction
+    seconds_passed = fromIntegral $
+      Time.systemSeconds time_now -
+      Time.systemSeconds time_of_start
+
 main :: IO ()
 main = do
+  num_capabilities <- getNumCapabilities
   http_manager <- HTTP.newTlsManager
+  bracket (Log.newStdoutLoggerSet Log.defaultBufSize) Log.flushLogStr $ \logger -> do
   package_names <- requestPackages http_manager
-  print (map (\(PackageName name) -> name) package_names)
+  let package_count = length package_names
+  counter <- newIORef (0 :: Int)
+  time_of_start <- Time.getSystemTime
+  let package_name_buckets = List.chunksOf (package_count `div` num_capabilities) package_names
+  forConcurrently_ package_name_buckets $ \package_name_bucket ->
+    for_ package_name_bucket $ \package_name -> do
+      let package_name_str = packageNameStr package_name
+      log logger ("Processing package: " ++ package_name_str)
+      skipKnownFailures logger $ downloadPackage logger http_manager package_name
+      n <- atomicModifyIORef counter (\n -> dup (n+1))
+      time_now <- Time.getSystemTime
+      let progress_fraction = fromIntegral n / fromIntegral package_count
+      log logger $
+        "Progress: " ++ show n ++ "/" ++ show package_count ++
+          " (ETA: " ++ estimate progress_fraction time_of_start time_now ++ ")"
+
+skipKnownFailures :: Log.LoggerSet -> IO () -> IO ()
+skipKnownFailures logger =
+    handleLegalReasons . handle410
+  where
+    handleLegalReasons = handleJust isLegalReasons $ \_ ->
+      log logger "Skipping package unavailable for legal reasons"
+    handle410 = handleJust is410 $ \_ ->
+      log logger "Skipping due to 410"
+
+    is410 (HTTP.HttpExceptionRequest _ (HTTP.StatusCodeException r _))
+      | HTTP.statusCode (HTTP.responseStatus r) == 410
+      = Just ()
+    is410 _ = Nothing
+
+    isLegalReasons (HTTP.HttpExceptionRequest _ (HTTP.StatusCodeException r s))
+      | HTTP.statusCode (HTTP.responseStatus r) == 451
+      , ByteString.Char8.pack "Unavailable For Legal Reasons" `ByteString.isInfixOf` s
+      = Just ()
+    isLegalReasons _ = Nothing
 
 requestPackages :: HTTP.Manager -> IO [PackageName]
 requestPackages http_manager = do
-  init_req <- HTTP.parseRequest "https://hackage.haskell.org/packages/"
+  init_req <-
+    fmap HTTP.setRequestCheckStatus $
+    HTTP.parseRequest "https://hackage.haskell.org/packages/"
   let req = init_req { HTTP.requestHeaders = [header_accept_json] }
   response <- HTTP.httpLbs req http_manager
   case JSON.decode (HTTP.responseBody response) of
     Nothing -> die "requestPackages: could not parse the response"
     Just r -> return r
+
+downloadPackage :: Log.LoggerSet -> HTTP.Manager -> PackageName -> IO ()
+downloadPackage logger http_manager package_name = do
+  let package_name_str = packageNameStr package_name
+  cabal_file_req <-
+    fmap HTTP.setRequestCheckStatus $
+    HTTP.parseRequest $
+      "https://hackage.haskell.org/package/" ++
+        package_name_str ++ "/" ++ package_name_str ++ ".cabal"
+  cabal_file_response <- HTTP.httpLbs cabal_file_req http_manager
+  let cabal_file_contents = ByteString.Lazy.toStrict (HTTP.responseBody cabal_file_response)
+  package_id <-
+    case Cabal.parseGenericPackageDescriptionMaybe cabal_file_contents of
+      Nothing -> die ("downloadPackage: could not parse the cabal file for " ++ package_name_str)
+      Just gen_pkg_desc -> return (Cabal.packageId gen_pkg_desc)
+  let package_id_str = Cabal.prettyShow package_id
+  log logger ("Constructed package_id: " ++ package_id_str)
+  tar_gz_req <-
+    fmap HTTP.setRequestCheckStatus $
+    HTTP.parseRequest $
+      "https://hackage.haskell.org/package/" ++
+        package_name_str ++ "/" ++ package_id_str ++ ".tar.gz"
+  tar_gz_response <- HTTP.httpLbs tar_gz_req http_manager
+  let tar_gz_content = HTTP.responseBody tar_gz_response
+      tar_content = GZip.decompress tar_gz_content
+      tar_file_name = package_id_str ++ ".tar"
+  log logger ("Saving: " ++ tar_file_name)
+  ByteString.Lazy.writeFile tar_file_name tar_content
+  callProcess "tar" ["--no-same-owner", "--no-same-permissions", "--extract", "--file=" ++ tar_file_name]
+  removeFile tar_file_name
 
 header_accept_json :: HTTP.Header
 header_accept_json = (HTTP.hAccept, ByteString.Char8.pack "application/json")

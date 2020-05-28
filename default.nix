@@ -13,6 +13,7 @@ let
   haskell_inputs = p: [
     p.servant-server
     p.http-client-tls
+    p.split
   ];
 
   haskellPackages =
@@ -34,7 +35,7 @@ pkgs.stdenv.mkDerivation rec {
     ghc "$src/backend/Main.hs" \
       -outputdir backend-build-artifacts \
       -o "$out/backend/hackage-search" \
-      -Wall -threaded -O2
+      -Wall -threaded -O2 -with-rtsopts="-N"
 
     runhaskell "$src/frontend/Build.hs" --src "$src/frontend" --out "$out/frontend"
   '';
