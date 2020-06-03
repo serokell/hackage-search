@@ -23,13 +23,13 @@ import qualified Distribution.Package as Cabal
 import qualified Distribution.Pretty as Cabal
 import qualified Distribution.PackageDescription.Parsec as Cabal
 import qualified Codec.Compression.GZip as GZip
+import qualified Codec.Archive.Tar as Tar
 import qualified System.Log.FastLogger as Log
 import qualified Data.Time.Clock.System as Time
 import qualified Data.Time.Clock as Time
 import qualified Data.Time.Format as Time
 import Data.String (fromString)
 import Control.Concurrent.Async (forConcurrently_)
-import System.Process (callProcess)
 import System.Directory (removeFile)
 import System.Exit (die)
 
@@ -66,11 +66,18 @@ estimate progress_fraction time_of_start time_now = showSeconds seconds_remainin
 
 main :: IO ()
 main = do
-  num_capabilities <- getNumCapabilities
   http_manager <- HTTP.newTlsManager
-  bracket (Log.newStdoutLoggerSet Log.defaultBufSize) Log.flushLogStr $ \logger -> do
+  bracket
+    (Log.newStdoutLoggerSet Log.defaultBufSize)
+    Log.flushLogStr
+    (\logger -> downloadHackage logger http_manager)
+
+downloadHackage :: Log.LoggerSet -> HTTP.Manager -> IO ()
+downloadHackage logger http_manager = do
+  num_capabilities <- getNumCapabilities
   package_names <- requestPackages http_manager
   let package_count = length package_names
+  log logger ("Downloading " ++ show package_count ++ " packages using " ++ show num_capabilities ++ " threads")
   counter <- newIORef (0 :: Int)
   time_of_start <- Time.getSystemTime
   let package_name_buckets = List.chunksOf (package_count `div` num_capabilities) package_names
@@ -144,7 +151,7 @@ downloadPackage logger http_manager package_name = do
       tar_file_name = package_id_str ++ ".tar"
   log logger ("Saving: " ++ tar_file_name)
   ByteString.Lazy.writeFile tar_file_name tar_content
-  callProcess "tar" ["--no-same-owner", "--no-same-permissions", "--extract", "--file=" ++ tar_file_name]
+  Tar.extract "." tar_file_name
   removeFile tar_file_name
 
 header_accept_json :: HTTP.Header

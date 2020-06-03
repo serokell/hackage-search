@@ -14,6 +14,7 @@ let
     p.servant-server
     p.http-client-tls
     p.split
+    p.tar
   ];
 
   haskellPackages =
