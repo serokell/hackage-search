@@ -159,6 +159,10 @@ function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: strin
     const pkg = instantiate_pkg_template(pkg_name);
     result_map[pkg_name] = { element: pkg, files: {} };
     results.append(pkg);
+    if (pkg_count.n === 0) {
+      pkg.setAttribute("open", "");
+      pkg.querySelector("summary").focus();
+    };
     pkg_count.n++;
   }
 }
@@ -233,7 +237,7 @@ function append_line_of_code(result_map: PathResultMap, path: string, line_numbe
   result.last_line_number = line_number;
 }
 
-function instantiate_pkg_template(pkg_name: string): Element {
+function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
   const pkg = <HTMLDetailsElement>clone_template("package-template");
   pkg.querySelector("summary").textContent = pkg_name;
   pkg.addEventListener("toggle", event => {
