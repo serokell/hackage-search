@@ -234,8 +234,16 @@ function append_line_of_code(result_map: PathResultMap, path: string, line_numbe
 }
 
 function instantiate_pkg_template(pkg_name: string): Element {
-  const pkg = clone_template("package-template");
+  const pkg = <HTMLDetailsElement>clone_template("package-template");
   pkg.querySelector("summary").textContent = pkg_name;
+  pkg.addEventListener("toggle", event => {
+    if (pkg.open) {
+      pkg.scrollIntoView({behavior: "smooth", block: "start"});
+    }
+    else {
+      pkg.scrollIntoView({behavior: "auto", block: "center"});
+    }
+  })
   return pkg;
 }
 
