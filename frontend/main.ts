@@ -73,9 +73,15 @@ type RgOutStats =
     matches: number
   }
 
-interface PathResultMap {
-  [index: string]: Result;
-}
+interface PathResultMap { [index: string]: Result; }
+
+type PkgResult =
+  {
+    element: Element
+    files: PathResultMap
+  }
+
+interface PkgResultMap { [index: string]: PkgResult; }
 
 type Result =
   {
@@ -84,12 +90,11 @@ type Result =
   }
 
 window.onload = function () {
-  const result_template = <HTMLTemplateElement>document.getElementById("result-template");
   const search_field = <HTMLInputElement>document.getElementById("search-field");
   search_field.onkeydown =
   event => {
     if(event.key === "Enter") {
-      const result_map: PathResultMap = {}
+      const result_map: PkgResultMap = {}
       const old_results = document.getElementById("results");
       const results = document.createElement("div");
       results.id = "results";
@@ -100,7 +105,7 @@ window.onload = function () {
   }
 }
 
-async function fetch_and_process(resource: string, result_map: PathResultMap, results: Element) {
+async function fetch_and_process(resource: string, result_map: PkgResultMap, results: Element) {
   const controller = new AbortController();
   const response = await fetch(resource, { signal: controller.signal });
   for await (const line of read_lines(response.body)) {
@@ -143,26 +148,50 @@ function append_Uint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
   return new Uint8Array(iterable);
 }
 
-function process_rg_out(j: RgOut, result_map: PathResultMap, results: Element) {
+function init_pkg(result_map: PkgResultMap, pkg_name: string, results: Element) {
+  if (!result_map.hasOwnProperty(pkg_name)) {
+    const pkg = instantiate_pkg_template(pkg_name);
+    result_map[pkg_name] = { element: pkg, files: {} };
+    results.append(pkg);
+  }
+}
+
+function process_rg_out(j: RgOut, result_map: PkgResultMap, results: Element) {
   if (j.type === "begin") {
-    const path = j.data.path.text;
-    const result = instantiate_result_template(j.data.path.text);
-    result_map[path] = { element: result, last_line_number: null };
-    results.append(result);
+    const { pkg_name, path } = split_pkg_name(j.data.path.text);
+    const result = instantiate_result_template(path);
+    init_pkg(result_map, pkg_name, results);
+    const pkg = result_map[pkg_name];
+    pkg.files[path] = { element: result, last_line_number: null };
+    pkg.element.append(result);
   }
   if (j.type === "context") {
-    const path = j.data.path.text;
+    const { pkg_name, path } = split_pkg_name(j.data.path.text);
     const line = document.createElement("code");
     line.textContent = j.data.lines.text;
     const line_of_code = instantiate_line_of_code_template(j.data.line_number, line);
-    append_line_of_code(result_map, path, j.data.line_number, line_of_code);
+    append_line_of_code(result_map[pkg_name].files, path, j.data.line_number, line_of_code);
   }
   if (j.type === "match") {
-    const path = j.data.path.text;
+    const { pkg_name, path } = split_pkg_name(j.data.path.text);
     const line = document.createElement("code");
     highlight_match(j.data.lines.text, line, j.data.submatches);
     const line_of_code = instantiate_line_of_code_template(j.data.line_number, line);
-    append_line_of_code(result_map, path, j.data.line_number, line_of_code);
+    append_line_of_code(result_map[pkg_name].files, path, j.data.line_number, line_of_code);
+  }
+}
+
+type SplitPkgOut =
+  {
+    pkg_name: string,
+    path: string
+  }
+
+function split_pkg_name(full_path: string): SplitPkgOut {
+  const i = full_path.indexOf('/');
+  return {
+    pkg_name: full_path.slice(0, i),
+    path: full_path.slice(i+1)
   }
 }
 
@@ -176,6 +205,12 @@ function append_line_of_code(result_map: PathResultMap, path: string, line_numbe
   }
   result_code.append(line_of_code);
   result.last_line_number = line_number;
+}
+
+function instantiate_pkg_template(pkg_name: string): Element {
+  const pkg = clone_template("package-template");
+  pkg.querySelector("summary").textContent = pkg_name;
+  return pkg;
 }
 
 function instantiate_result_template(header: string): Element {

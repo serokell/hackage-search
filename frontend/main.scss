@@ -52,6 +52,36 @@ main {
   max-width: 800px;
 }
 
+.search {
+  margin-bottom: 2em;
+}
+
+details > summary { list-style-type: none; }
+detauls > details summary::-webkit-details-marker { display: none; }
+details > summary::marker { display: none; }
+
+.package {
+  display: inline-block;
+  border: 1px solid $neutral-color;
+  border-radius: 3px;
+  margin: 3px;
+}
+
+.package > summary {
+  padding: 5px;
+  cursor: pointer;
+}
+
+.package > summary:hover {
+  background: $bright-color;
+  color: white;
+}
+
+.package[open] {
+  margin-bottom: 2em;
+  display: block;
+}
+
 #search-field {
   border: 0;
   font-family: monospace;
@@ -106,16 +136,21 @@ h3 {
 
 hr {
   border: none;
-  border-top: 1px solid $neutral-color;
-  color: $neutral-color;
+  border-top: 1px solid $separator-color;
+  color: $separator-color;
   height: 0;
+}
+
+.package[open] > summary {
+  font-size: 1.5em;
+  border-bottom: 1px solid $separator-color;
 }
 
 .result {
   padding: 1em;
 }
 
-.result, .line {
+.package {
   animation: fadein 0.5s;
 }
 
