@@ -89,6 +89,11 @@ type Result =
     last_line_number: number | null;
   }
 
+type PkgCount =
+  {
+    n: number;
+  }
+
 window.onload = function () {
   const search_field = <HTMLInputElement>document.getElementById("search-field");
   search_field.onkeydown =
@@ -108,6 +113,7 @@ window.onload = function () {
 async function fetch_and_process(resource: string, result_map: PkgResultMap, results: Element) {
   const controller = new AbortController();
   const response = await fetch(resource, { signal: controller.signal });
+  const pkg_count = { n: 0 }
   for await (const line of read_lines(response.body)) {
     if (!document.body.contains(results)) {
       console.log("Canceling query:", resource);
@@ -115,7 +121,7 @@ async function fetch_and_process(resource: string, result_map: PkgResultMap, res
       break;
     }
     const j = <RgOut>JSON.parse(line);
-    process_rg_out(j, result_map, results);
+    await process_rg_out(j, pkg_count, result_map, results);
   }
 }
 
@@ -148,22 +154,22 @@ function append_Uint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
   return new Uint8Array(iterable);
 }
 
-function init_pkg(result_map: PkgResultMap, pkg_name: string, results: Element) {
+function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: string, results: Element) {
   if (!result_map.hasOwnProperty(pkg_name)) {
     const pkg = instantiate_pkg_template(pkg_name);
     result_map[pkg_name] = { element: pkg, files: {} };
     results.append(pkg);
+    pkg_count.n++;
   }
 }
 
-function process_rg_out(j: RgOut, result_map: PkgResultMap, results: Element) {
+function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap, results: Element): Promise<void> {
   if (j.type === "begin") {
     const { pkg_name, path } = split_pkg_name(j.data.path.text);
     const result = instantiate_result_template(path);
-    init_pkg(result_map, pkg_name, results);
+    init_pkg(pkg_count, result_map, pkg_name, results);
     const pkg = result_map[pkg_name];
     pkg.files[path] = { element: result, last_line_number: null };
-    pkg.element.append(result);
   }
   if (j.type === "context") {
     const { pkg_name, path } = split_pkg_name(j.data.path.text);
@@ -179,7 +185,27 @@ function process_rg_out(j: RgOut, result_map: PkgResultMap, results: Element) {
     const line_of_code = instantiate_line_of_code_template(j.data.line_number, line);
     append_line_of_code(result_map[pkg_name].files, path, j.data.line_number, line_of_code);
   }
+  if (j.type === "end") {
+    const { pkg_name, path } = split_pkg_name(j.data.path.text);
+    const pkg = result_map[pkg_name];
+    pkg.element.append(pkg.files[path].element);
+  }
+  if (pkg_count.n % 3 == 0) {
+    return new Promise(r => setTimeout(r, 10)); // See Note [setTimeout in process_rg_out]
+  }
 }
+
+/* Note [setTimeout in process_rg_out]
+--------------------------------------
+
+In JavaScript, data processing and UI rendering happens in the same thread
+(without WebWorkers). So if the server responds with lots of data, we must
+take breaks from processing to let the browser handle UI events and render the
+page.
+
+A timeout for 10ms after every 10 processed packages seems to yield best UX.
+
+*/
 
 type SplitPkgOut =
   {
