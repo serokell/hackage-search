@@ -1,6 +1,6 @@
 $neutral-color: #888;
 $bright-color: rgb(227,48,27);
-$line-number-background-color: #eee;
+$light-background-color: #eee;
 $separator-color: #ccc;
 
 @font-face {
@@ -67,6 +67,11 @@ details > summary::marker { display: none; }
   margin: 3px;
 }
 
+.package[open] {
+  margin-bottom: 2em;
+  display: block;
+}
+
 .package > summary {
   padding: 5px;
   cursor: pointer;
@@ -77,9 +82,18 @@ details > summary::marker { display: none; }
   color: white;
 }
 
-.package[open] {
-  margin-bottom: 2em;
-  display: block;
+.package[open] > summary {
+  font-size: 1.5em;
+  font-weight: bold;
+}
+
+.package > summary:focus {
+  outline: inherit;
+}
+
+.package > summary:focus:not(:hover) {
+  background: #333;
+  color: white;
 }
 
 #search-field {
@@ -116,7 +130,7 @@ a:hover {
 .line-number {
   user-select: none;
   font-family: monospace;
-  background: $line-number-background-color;
+  background: $light-background-color;
   color: $neutral-color;
   padding: 3px;
   text-align: right;
@@ -139,16 +153,6 @@ hr {
   border-top: 1px solid $separator-color;
   color: $separator-color;
   height: 0;
-}
-
-.package[open] > summary {
-  font-size: 1.5em;
-  border-bottom: 1px solid $separator-color;
-}
-
-.package > summary:focus {
-  outline: inherit;
-  font-weight: bold;
 }
 
 .result {
