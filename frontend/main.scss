@@ -146,6 +146,11 @@ hr {
   border-bottom: 1px solid $separator-color;
 }
 
+.package > summary:focus {
+  outline: inherit;
+  font-weight: bold;
+}
+
 .result {
   padding: 1em;
 }
