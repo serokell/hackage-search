@@ -171,3 +171,12 @@ hr {
 .omission-bar {
   border-top: 1px dashed $separator-color;
 }
+
+.error {
+  display: inline-block;
+  white-space: pre;
+  font-family: monospace;
+  border: 1px solid $bright-color;
+  border-radius: 3px;
+  padding: 5px;
+}

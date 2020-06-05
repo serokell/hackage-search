@@ -43,6 +43,10 @@ type RgOut =
         stats: RgOutStats
       }
     }
+  | {
+      type: "error",
+      message: string
+    }
 
 type RgOutMatch =
   {
@@ -194,6 +198,10 @@ function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap,
     const pkg = result_map[pkg_name];
     pkg.element.append(pkg.files[path].element);
   }
+  if (j.type === "error") {
+    const err = instantiate_error_template(j.message);
+    results.append(err);
+  }
   if (pkg_count.n % 3 == 0) {
     return new Promise(r => setTimeout(r, 10)); // See Note [setTimeout in process_rg_out]
   }
@@ -235,6 +243,12 @@ function append_line_of_code(result_map: PathResultMap, path: string, line_numbe
   }
   result_code.append(line_of_code);
   result.last_line_number = line_number;
+}
+
+function instantiate_error_template(message: string): Element {
+  const err = clone_template("error-template");
+  err.textContent = message;
+  return err;
 }
 
 function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
