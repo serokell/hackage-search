@@ -108,21 +108,41 @@ type PkgCount =
 window.onload = function () {
   const search_field = <HTMLInputElement>document.getElementById("search-field");
   search_field.onkeydown =
-  event => {
-    if(event.key === "Enter") {
-      const result_map: PkgResultMap = {}
-      const old_results = document.getElementById("results");
-      const results = instantiate_results_template();
-      old_results.parentNode.replaceChild(results.element, old_results);
-      const resource = "/rg/" + encodeURIComponent(search_field.value);
-      fetch_and_process(resource, result_map, results).catch(
-        error => {
-          const err = instantiate_error_template(error.toString());
-          results.items.append(err);
-          results.status.textContent = "Search failed";
-        });
-    }
+    event => {
+      if(event.key === "Enter") {
+        set_search_q(search_field.value);
+        run_search(search_field.value);
+      }
+    };
+  const search_q = get_search_q();
+  if (search_q != null) {
+    search_field.value = search_q;
+    run_search(search_q);
   }
+}
+
+function run_search(q: string) {
+  const result_map: PkgResultMap = {}
+  const old_results = document.getElementById("results");
+  const results = instantiate_results_template();
+  old_results.parentNode.replaceChild(results.element, old_results);
+  const resource = "/rg/" + encodeURIComponent(q);
+  fetch_and_process(resource, result_map, results).catch(
+    error => {
+      const err = instantiate_error_template(error.toString());
+      results.items.append(err);
+      results.status.textContent = "Search failed";
+    });
+}
+
+function get_search_q(): (string | null) {
+  return new URL(window.location.href).searchParams.get("q");
+}
+
+function set_search_q(q: string) {
+  const new_url = new URL(window.location.href);
+  new_url.searchParams.set("q", q);
+  history.replaceState(null, "", new_url.toString());
 }
 
 async function fetch_and_process(resource: string, result_map: PkgResultMap, results: Results) {
