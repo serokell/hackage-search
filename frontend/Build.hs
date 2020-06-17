@@ -8,17 +8,17 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Options.Applicative as Opt
 
-data Config = Config { srcDir :: FilePath, outDir :: FilePath }
+data Config = Config { srcDir :: FilePath, outFile :: FilePath }
 
 configOptP :: Opt.Parser Config
 configOptP = do
   srcDir <- Opt.strOption (Opt.long "src" <> Opt.metavar "PATH")
-  outDir <- Opt.strOption (Opt.long "out" <> Opt.metavar "PATH")
-  pure Config{srcDir, outDir}
+  outFile <- Opt.strOption (Opt.long "out" <> Opt.metavar "PATH")
+  pure Config{srcDir, outFile}
 
 main :: IO ()
 main = do
-  Config{srcDir, outDir} <-
+  Config{srcDir, outFile} <-
     Opt.execParser $
       Opt.info (configOptP <**> Opt.helper)
         (Opt.fullDesc <> Opt.header "Build the Hackage Search Front End")
@@ -40,7 +40,7 @@ main = do
         insert_css (Text.pack css_out) $
         insert_js (Text.pack js_out) $
         html_src
-  Text.writeFile (outDir </> "index.html") html_out
+  Text.writeFile outFile html_out
 
 insert_css css = Text.replace "<style></style>" ("<style>" <> css <> "</style>")
 insert_js js = Text.replace "<script></script>" ("<script>" <> js <> "</script>")

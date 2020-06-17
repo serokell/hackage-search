@@ -30,15 +30,22 @@ pkgs.stdenv.mkDerivation rec {
   name = "hackage-search";
   src = ./.;
   buildCommand = ''
-    mkdir -p "$out/backend/" "$out/frontend/"
+    mkdir -p "$out"
 
     mkdir backend-build-artifacts
-    ghc "$src/backend/Main.hs" \
+    ghc "$src/backend/Search.hs" \
       -outputdir backend-build-artifacts \
-      -o "$out/backend/hackage-search" \
+      -o "$out/hackage-search" \
       -Wall -threaded -O2 -with-rtsopts="-N"
 
-    runhaskell "$src/frontend/Build.hs" --src "$src/frontend" --out "$out/frontend"
+    ghc "$src/backend/Download.hs" \
+      -outputdir backend-build-artifacts \
+      -o "$out/hackage-download" \
+      -Wall -threaded -O2 -with-rtsopts="-N"
+
+    runhaskell "$src/frontend/Build.hs" \
+      --src "$src/frontend" \
+      --out "$out/index.html"
   '';
   buildInputs = [
     /* Backend */
