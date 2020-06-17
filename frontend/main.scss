@@ -4,14 +4,15 @@ $light-background-color: #eee;
 $separator-color: #ccc;
 
 @font-face {
-  font-family:srk-condensed;
-  src:url(/static/fonts/srk-cond-regular.woff) format("woff");
-  font-weight:400;
-  font-style:normal
+  font-family: 'srk-condensed';
+  src: url('/static/fonts/srk-cond-regular.woff2') format('woff2'),
+       url('/static/fonts/srk-cond-regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
 }
 
 body {
-  font-family: 'srk-condensed';
+  font-family: 'srk-condensed', sans-serif;
 }
 
 header {
