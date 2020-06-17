@@ -126,13 +126,19 @@ function run_search(q: string) {
   const old_results = document.getElementById("results")!;
   const results = instantiate_results_template();
   old_results.parentNode!.replaceChild(results.element, old_results);
-  const resource = "/rg/" + encodeURIComponent(q);
+  const resource = rg_endpoint(q);
   fetch_and_process(resource, result_map, results).catch(
     error => {
       const err = instantiate_error_template(error.toString());
       results.items.append(err);
       results.status.textContent = "Search failed";
     });
+}
+
+function rg_endpoint(q: string): string {
+  const current_path = window.location.pathname;
+  const rg_suffix = current_path.substr(-1) == '/' ? 'rg/' : '/rg/';
+  return current_path + rg_suffix + encodeURIComponent(q);
 }
 
 function get_search_q(): (string | null) {
