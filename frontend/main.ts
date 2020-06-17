@@ -123,9 +123,9 @@ window.onload = function () {
 
 function run_search(q: string) {
   const result_map: PkgResultMap = {}
-  const old_results = document.getElementById("results");
+  const old_results = document.getElementById("results")!;
   const results = instantiate_results_template();
-  old_results.parentNode.replaceChild(results.element, old_results);
+  old_results.parentNode!.replaceChild(results.element, old_results);
   const resource = "/rg/" + encodeURIComponent(q);
   fetch_and_process(resource, result_map, results).catch(
     error => {
@@ -149,7 +149,7 @@ async function fetch_and_process(resource: string, result_map: PkgResultMap, res
   const controller = new AbortController();
   const response = await fetch(resource, { signal: controller.signal });
   const pkg_count = { n: 0 }
-  for await (const line of read_lines(response.body)) {
+  for await (const line of read_lines(response.body!)) {
     if (!document.body.contains(results.element)) {
       console.log("Canceling query:", resource);
       controller.abort();
@@ -196,7 +196,7 @@ function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: strin
     results.items.append(pkg);
     if (pkg_count.n === 0) {
       pkg.setAttribute("open", "");
-      pkg.querySelector("summary").focus();
+      pkg.querySelector("summary")!.focus();
     };
     pkg_count.n++;
   }
@@ -243,6 +243,9 @@ function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap,
   if (pkg_count.n % 3 == 0) {
     return new Promise(r => setTimeout(r, 10)); // See Note [setTimeout in process_rg_out]
   }
+  else {
+    return Promise.resolve(void(0));
+  }
 }
 
 function summary_message(matches: number, pkg_count: number): string {
@@ -286,11 +289,11 @@ function split_pkg_name(full_path: string): SplitPkgOut {
 
 function append_line_of_code(result_map: PathResultMap, path: string, line_number: number, line_of_code: Node) {
   const result = result_map[path];
-  const result_code = result.element.querySelector(".result-code");
+  const result_code = result.element.querySelector(".result-code")!;
   const continuous = result.last_line_number === null || result.last_line_number === line_number - 1;
   if (!continuous) {
     const omission = clone_template("omission-template");
-    result_map[path].element.querySelector(".result-code").append(omission);
+    result_map[path].element.querySelector(".result-code")!.append(omission);
   }
   result_code.append(line_of_code);
   result.last_line_number = line_number;
@@ -307,8 +310,8 @@ function instantiate_results_template(): Results {
   const results =
     {
       element: results_element,
-      items: results_element.querySelector(".results-items"),
-      status: results_element.querySelector(".results-status")
+      items: results_element.querySelector(".results-items")!,
+      status: results_element.querySelector(".results-status")!
     };
   results.element.id = "results";
   return results;
@@ -316,7 +319,7 @@ function instantiate_results_template(): Results {
 
 function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
   const pkg = <HTMLDetailsElement>clone_template("package-template");
-  pkg.querySelector("summary").textContent = pkg_name;
+  pkg.querySelector("summary")!.textContent = pkg_name;
   pkg.addEventListener("toggle", event => {
     if (pkg.open) {
       pkg.scrollIntoView({behavior: "smooth", block: "start"});
@@ -330,21 +333,21 @@ function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
 
 function instantiate_result_template(header: string): Element {
   const result = clone_template("result-template");
-  result.querySelector("h3").textContent = header;
+  result.querySelector("h3")!.textContent = header;
   return result;
 }
 
 function instantiate_line_of_code_template(line_number: number, line: Node): Element {
   const line_of_code = clone_template("line-of-code-template");
-  line_of_code.querySelector(".line-number").textContent = line_number.toString();
-  line_of_code.querySelector(".line").append(line);
+  line_of_code.querySelector(".line-number")!.textContent = line_number.toString();
+  line_of_code.querySelector(".line")!.append(line);
   return line_of_code;
 }
 
 function clone_template(id: string): Element {
   const template = <HTMLTemplateElement>document.getElementById(id);
   const instance = <DocumentFragment>template.content.cloneNode(true);
-  return instance.firstElementChild;
+  return instance.firstElementChild!;
 }
 
 function highlight_match(str: string, fmtstr: Element, submatches: RgOutMatch[]) {
