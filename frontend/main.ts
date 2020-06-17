@@ -148,6 +148,7 @@ function set_search_q(q: string) {
 async function fetch_and_process(resource: string, result_map: PkgResultMap, results: Results) {
   const controller = new AbortController();
   const response = await fetch(resource, { signal: controller.signal });
+  check_response_status(response);
   const pkg_count = { n: 0 }
   for await (const line of read_lines(response.body!)) {
     if (!document.body.contains(results.element)) {
@@ -157,6 +158,12 @@ async function fetch_and_process(resource: string, result_map: PkgResultMap, res
     }
     const j = <RgOut>JSON.parse(line);
     await process_rg_out(j, pkg_count, result_map, results);
+  }
+}
+
+function check_response_status(response: Response): void {
+  if (!response.ok) {
+    throw response.status.toString() + ': ' + response.statusText;
   }
 }
 
