@@ -47,13 +47,19 @@ main {
   box-sizing: border-box;
 }
 
-.search, #results {
+.search, .results {
   width: 80%;
   max-width: 800px;
 }
 
 .search {
   margin-bottom: 2em;
+}
+
+.results-status {
+  text-align: center;
+  color: $neutral-color;
+  padding: 1em;
 }
 
 details > summary { list-style-type: none; }

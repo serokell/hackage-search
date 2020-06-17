@@ -87,6 +87,13 @@ type PkgResult =
 
 interface PkgResultMap { [index: string]: PkgResult; }
 
+type Results =
+  {
+    element: Element
+    items: Element
+    status: Element
+  }
+
 type Result =
   {
     element: Element
@@ -105,21 +112,25 @@ window.onload = function () {
     if(event.key === "Enter") {
       const result_map: PkgResultMap = {}
       const old_results = document.getElementById("results");
-      const results = document.createElement("div");
-      results.id = "results";
-      old_results.parentNode.replaceChild(results, old_results);
+      const results = instantiate_results_template();
+      old_results.parentNode.replaceChild(results.element, old_results);
       const resource = "/rg/" + encodeURIComponent(search_field.value);
-      fetch_and_process(resource, result_map, results);
+      fetch_and_process(resource, result_map, results).catch(
+        error => {
+          const err = instantiate_error_template(error.toString());
+          results.items.append(err);
+          results.status.textContent = "Search failed";
+        });
     }
   }
 }
 
-async function fetch_and_process(resource: string, result_map: PkgResultMap, results: Element) {
+async function fetch_and_process(resource: string, result_map: PkgResultMap, results: Results) {
   const controller = new AbortController();
   const response = await fetch(resource, { signal: controller.signal });
   const pkg_count = { n: 0 }
   for await (const line of read_lines(response.body)) {
-    if (!document.body.contains(results)) {
+    if (!document.body.contains(results.element)) {
       console.log("Canceling query:", resource);
       controller.abort();
       break;
@@ -158,11 +169,11 @@ function append_Uint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
   return new Uint8Array(iterable);
 }
 
-function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: string, results: Element) {
+function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: string, results: Results) {
   if (!result_map.hasOwnProperty(pkg_name)) {
     const pkg = instantiate_pkg_template(pkg_name);
     result_map[pkg_name] = { element: pkg, files: {} };
-    results.append(pkg);
+    results.items.append(pkg);
     if (pkg_count.n === 0) {
       pkg.setAttribute("open", "");
       pkg.querySelector("summary").focus();
@@ -171,7 +182,7 @@ function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: strin
   }
 }
 
-function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap, results: Element): Promise<void> {
+function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap, results: Results): Promise<void> {
   if (j.type === "begin") {
     const { pkg_name, path } = split_pkg_name(j.data.path.text);
     const result = instantiate_result_template(path);
@@ -200,11 +211,31 @@ function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap,
   }
   if (j.type === "error") {
     const err = instantiate_error_template(j.message);
-    results.append(err);
+    results.items.append(err);
+    results.status.textContent = "Search failed";
+  }
+  if (j.type === "summary") {
+    results.status.textContent =
+      "Search completed ("
+        + summary_message(j.data.stats.matches, pkg_count.n)
+        + ")";
   }
   if (pkg_count.n % 3 == 0) {
     return new Promise(r => setTimeout(r, 10)); // See Note [setTimeout in process_rg_out]
   }
+}
+
+function summary_message(matches: number, pkg_count: number): string {
+  // e.g. "15 matches across 10 packages", "2 matches in 1 package"
+  return (
+    pluralise(matches, "match", "matches")
+      + (pkg_count === 1 ? " in " : " across ")
+      + pluralise(pkg_count, "package", "packages")
+    );
+}
+
+function pluralise(n: number, singular: string, plural: string): string {
+  return n.toString() + ' ' + (n === 1 ? singular : plural);
 }
 
 /* Note [setTimeout in process_rg_out]
@@ -249,6 +280,18 @@ function instantiate_error_template(message: string): Element {
   const err = clone_template("error-template");
   err.textContent = message;
   return err;
+}
+
+function instantiate_results_template(): Results {
+  const results_element = clone_template("results-template");
+  const results =
+    {
+      element: results_element,
+      items: results_element.querySelector(".results-items"),
+      status: results_element.querySelector(".results-status")
+    };
+  results.element.id = "results";
+  return results;
 }
 
 function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
