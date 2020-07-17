@@ -52,31 +52,43 @@ let
     else "";
 in
 
-pkgs.stdenv.mkDerivation rec {
-  name = "hackage-search";
-  src = ./.;
-  buildCommand = ''
-    mkdir -p "$out"
+rec {
 
-    mkdir backend-build-artifacts
-    ghc "$src/backend/Search.hs" \
-      -outputdir backend-build-artifacts \
-      -o "$out/hackage-search" \
-      -Wall -threaded -O2 -with-rtsopts="-N"
+  search =
+    pkgs.stdenv.mkDerivation rec {
+      name = "hackage-search";
+      src = ./.;
+      buildCommand = ''
+        mkdir -p "$out"
 
-    ghc "$src/backend/Download.hs" \
-      -outputdir backend-build-artifacts \
-      -o "$out/hackage-download" \
-      -Wall -threaded -O2 -with-rtsopts="-N"
+        mkdir backend-build-artifacts
+        ghc "$src/backend/Search.hs" \
+          -outputdir backend-build-artifacts \
+          -o "$out/hackage-search" \
+          -Wall -threaded -O2 -with-rtsopts="-N"
 
-    runhaskell "$src/frontend/Build.hs" \
-      --src "$src/frontend" \
-      --out "$out/index.html"
-  '';
-  buildInputs = backendInputs ++ frontendInputs ++ shellInputs;
-  shellHook = ''
-    export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH
-    export LANG=en_US.UTF-8
-  '';
-  inherit LOCALE_ARCHIVE;
+        ghc "$src/backend/Download.hs" \
+          -outputdir backend-build-artifacts \
+          -o "$out/hackage-download" \
+          -Wall -threaded -O2 -with-rtsopts="-N"
+
+        runhaskell "$src/frontend/Build.hs" \
+          --src "$src/frontend" \
+          --out "$out/index.html"
+      '';
+      buildInputs = backendInputs ++ frontendInputs;
+      inherit LOCALE_ARCHIVE;
+    };
+
+  shell =
+    pkgs.mkShell rec {
+      nobuildPhase = "touch $out";
+      buildInputs = backendInputs ++ frontendInputs ++ shellInputs;
+      shellHook = ''
+        export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH
+        export LANG=en_US.UTF-8
+      '';
+      inherit LOCALE_ARCHIVE;
+    };
+
 }
