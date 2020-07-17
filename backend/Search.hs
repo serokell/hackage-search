@@ -8,8 +8,11 @@ import Control.Applicative
 import Servant
 import Servant.Types.SourceT
 import Network.Wai.Handler.Warp
+import qualified Network.Socket
+import qualified Data.Streaming.Network
 import qualified Options.Applicative as Opt
 import System.Process
+import Control.Exception hiding (Handler)
 import Control.Monad.IO.Class
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -18,10 +21,11 @@ import qualified Data.Text.IO as Text
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Builder as ByteString.Builder
 import qualified Data.ByteString.Lazy as ByteString.Lazy
+import System.Exit (die)
 
 data Config =
   Config {
-    configPort :: Int,
+    configBindTarget :: BindTarget,
     configHackagePath :: FilePath,
     configFrontEndPath :: FilePath
   }
@@ -93,15 +97,31 @@ jsonEncodeErr err = process enc
 
 configOptP :: Opt.Parser Config
 configOptP = do
-  configPort <- Opt.option Opt.auto (Opt.long "port" <> Opt.metavar "NNNN")
+  configBindTarget <-
+    BindOnPort <$> Opt.option Opt.auto (Opt.long "port" <> Opt.metavar "NNNN")
+      <|>
+    BindOnUnixSocket <$> Opt.strOption (Opt.long "unix" <> Opt.metavar "PATH")
   configHackagePath <- Opt.strOption (Opt.long "hackage" <> Opt.metavar "PATH")
   configFrontEndPath <- Opt.strOption (Opt.long "frontend" <> Opt.metavar "PATH")
-  pure Config{configPort, configHackagePath, configFrontEndPath}
+  pure Config{configBindTarget, configHackagePath, configFrontEndPath}
 
 main :: IO ()
 main = do
-  config@Config{configPort} <-
+  config@Config{configBindTarget} <-
     Opt.execParser $
       Opt.info (configOptP <**> Opt.helper)
         (Opt.fullDesc <> Opt.header "Hackage Search")
-  run configPort (serve hackageSearchAPI (hackageSearchServer config))
+  runServer configBindTarget (serve hackageSearchAPI (hackageSearchServer config))
+
+data BindTarget
+  = BindOnPort Int
+  | BindOnUnixSocket FilePath
+
+runServer :: BindTarget -> Application -> IO ()
+runServer (BindOnPort port) = run port
+runServer (BindOnUnixSocket path) = \app ->
+  Network.Socket.withSocketsDo $
+  bracket
+    (Data.Streaming.Network.bindPath path)
+    Network.Socket.close
+    (\socket -> runSettingsSocket defaultSettings socket app)
