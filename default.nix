@@ -57,17 +57,17 @@ rec {
   search =
     pkgs.stdenv.mkDerivation rec {
       name = "hackage-search";
-      src = ./.;
+      src = ./backend;
       buildCommand = ''
         mkdir -p "$out"
 
         mkdir backend-build-artifacts
-        ghc "$src/backend/Search.hs" \
+        ghc "$src/Search.hs" \
           -outputdir backend-build-artifacts \
           -o "$out/hackage-search" \
           -Wall -threaded -O2 -with-rtsopts="-N"
 
-        ghc "$src/backend/Download.hs" \
+        ghc "$src/Download.hs" \
           -outputdir backend-build-artifacts \
           -o "$out/hackage-download" \
           -Wall -threaded -O2 -with-rtsopts="-N"
@@ -79,11 +79,11 @@ rec {
   frontend =
     pkgs.stdenv.mkDerivation rec {
       name = "hackage-search-frontend";
-      src = ./.;
+      src = ./frontend;
       buildCommand = ''
         mkdir -p "$out"
-        runhaskell "$src/frontend/Build.hs" \
-          --src "$src/frontend" \
+        runhaskell "$src/Build.hs" \
+          --src "$src" \
           --out "$out/index.html"
       '';
       buildInputs = frontendInputs;
