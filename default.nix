@@ -71,12 +71,22 @@ rec {
           -outputdir backend-build-artifacts \
           -o "$out/hackage-download" \
           -Wall -threaded -O2 -with-rtsopts="-N"
+      '';
+      buildInputs = backendInputs;
+      inherit LOCALE_ARCHIVE;
+    };
 
+  frontend =
+    pkgs.stdenv.mkDerivation rec {
+      name = "hackage-search-frontend";
+      src = ./.;
+      buildCommand = ''
+        mkdir -p "$out"
         runhaskell "$src/frontend/Build.hs" \
           --src "$src/frontend" \
           --out "$out/index.html"
       '';
-      buildInputs = backendInputs ++ frontendInputs;
+      buildInputs = frontendInputs;
       inherit LOCALE_ARCHIVE;
     };
 
