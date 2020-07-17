@@ -54,22 +54,32 @@ in
 
 rec {
 
+  download =
+    pkgs.stdenv.mkDerivation rec {
+      name = "hackage-download";
+      src = ./backend;
+      buildCommand = ''
+        mkdir -p "$out"
+        mkdir backend-build-artifacts
+        ghc "$src/Download.hs" \
+          -outputdir backend-build-artifacts \
+          -o "$out/hackage-download" \
+          -Wall -threaded -O2 -with-rtsopts="-N"
+      '';
+      buildInputs = backendInputs;
+      inherit LOCALE_ARCHIVE;
+    };
+
   search =
     pkgs.stdenv.mkDerivation rec {
       name = "hackage-search";
       src = ./backend;
       buildCommand = ''
         mkdir -p "$out"
-
         mkdir backend-build-artifacts
         ghc "$src/Search.hs" \
           -outputdir backend-build-artifacts \
           -o "$out/hackage-search" \
-          -Wall -threaded -O2 -with-rtsopts="-N"
-
-        ghc "$src/Download.hs" \
-          -outputdir backend-build-artifacts \
-          -o "$out/hackage-download" \
           -Wall -threaded -O2 -with-rtsopts="-N"
       '';
       buildInputs = backendInputs;
