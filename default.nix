@@ -10,13 +10,6 @@ in
 
 let
 
-  haskell_inputs = p: [
-    p.servant-server
-    p.http-client-tls
-    p.split
-    p.tar
-  ];
-
   haskellPackages =
     pkgs.haskell.packages.${hc}.override {
       overrides = self: super: rec {
@@ -24,6 +17,39 @@ let
       };
     };
 
+  ghcWithPackages =
+    haskellPackages.ghcWithPackages (p: [
+      p.servant-server
+      p.http-client-tls
+      p.split
+      p.tar
+    ]);
+
+  backendInputs = [
+    ghcWithPackages
+    pkgs.cabal-install
+    pkgs.git
+    pkgs.zlib
+    pkgs.pkgconfig
+  ];
+
+  frontendInputs = [
+    ghcWithPackages /* for the build script */
+    pkgs.nodePackages.typescript
+    pkgs.closurecompiler
+    pkgs.sass
+  ];
+
+  shellInputs = [
+    pkgs.inotify-tools
+    pkgs.haskellPackages.html-validator-cli
+    pkgs.ghcid
+  ];
+
+  LOCALE_ARCHIVE =
+    if pkgs.stdenv.isLinux
+    then "${pkgs.glibcLocales}/lib/locale/locale-archive"
+    else "";
 in
 
 pkgs.stdenv.mkDerivation rec {
@@ -47,30 +73,10 @@ pkgs.stdenv.mkDerivation rec {
       --src "$src/frontend" \
       --out "$out/index.html"
   '';
-  buildInputs = [
-    /* Backend */
-    (haskellPackages.ghcWithPackages haskell_inputs)
-    pkgs.cabal-install
-    pkgs.git
-    pkgs.zlib
-    pkgs.pkgconfig
-
-    /* Frontend */
-    pkgs.nodePackages.typescript
-    pkgs.closurecompiler
-    pkgs.sass
-
-    /* Development */
-    pkgs.inotify-tools
-    pkgs.haskellPackages.html-validator-cli
-    pkgs.ghcid
-  ];
+  buildInputs = backendInputs ++ frontendInputs ++ shellInputs;
   shellHook = ''
     export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH
     export LANG=en_US.UTF-8
   '';
-  LOCALE_ARCHIVE =
-    if pkgs.stdenv.isLinux
-    then "${pkgs.glibcLocales}/lib/locale/locale-archive"
-    else "";
+  inherit LOCALE_ARCHIVE;
 }
