@@ -21,7 +21,6 @@ import qualified Data.Text.IO as Text
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Builder as ByteString.Builder
 import qualified Data.ByteString.Lazy as ByteString.Lazy
-import System.Exit (die)
 
 data Config =
   Config {
