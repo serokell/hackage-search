@@ -92,7 +92,7 @@ rec {
       src = ./frontend;
       buildCommand = ''
         mkdir -p "$out"
-        runhaskell "$src/Build.hs" \
+        runghc "$src/Build.hs" \
           --src "$src" \
           --out "$out/index.html"
       '';
