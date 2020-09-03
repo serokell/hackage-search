@@ -30,7 +30,8 @@ import qualified Data.Time.Clock as Time
 import qualified Data.Time.Format as Time
 import Data.String (fromString)
 import Control.Concurrent.Async (forConcurrently_)
-import System.Directory (removeFile)
+import System.FilePath (takeDirectory, (</>))
+import System.Directory (createDirectoryIfMissing, removeFile)
 import System.Exit (die)
 
 newtype PackageName = PackageName { packageNameText :: Text }
@@ -124,8 +125,8 @@ requestPackages http_manager = do
     Nothing -> die "requestPackages: could not parse the response"
     Just r -> return r
 
-downloadPackage :: Log.LoggerSet -> HTTP.Manager -> PackageName -> IO ()
-downloadPackage logger http_manager package_name = do
+identifyPackage :: HTTP.Manager -> PackageName -> IO Cabal.PackageId
+identifyPackage http_manager package_name = do
   let package_name_str = packageNameStr package_name
   cabal_file_req <-
     fmap HTTP.setRequestCheckStatus $
@@ -138,8 +139,25 @@ downloadPackage logger http_manager package_name = do
     case Cabal.parseGenericPackageDescriptionMaybe cabal_file_contents of
       Nothing -> die ("downloadPackage: could not parse the cabal file for " ++ package_name_str)
       Just gen_pkg_desc -> return (Cabal.packageId gen_pkg_desc)
+  return package_id
+
+data PackageFile =
+  PackageFile {
+    packageFilePath :: FilePath,
+    packageFileContent :: ByteString.Lazy.ByteString
+  }
+
+writePackageFile :: FilePath -> PackageFile -> IO ()
+writePackageFile base_dir package_file = do
+    let abs_dir_path  = base_dir </> takeDirectory (packageFilePath package_file)
+        abs_file_path = base_dir </> packageFilePath package_file
+    createDirectoryIfMissing True abs_dir_path
+    ByteString.Lazy.writeFile abs_file_path (packageFileContent package_file)
+
+downloadPackageArchive :: HTTP.Manager -> Cabal.PackageId -> IO [PackageFile]
+downloadPackageArchive http_manager package_id = do
+  let package_name_str = Cabal.unPackageName (Cabal.pkgName package_id)
   let package_id_str = Cabal.prettyShow package_id
-  log logger ("Constructed package_id: " ++ package_id_str)
   tar_gz_req <-
     fmap HTTP.setRequestCheckStatus $
     HTTP.parseRequest $
@@ -148,11 +166,31 @@ downloadPackage logger http_manager package_name = do
   tar_gz_response <- HTTP.httpLbs tar_gz_req http_manager
   let tar_gz_content = HTTP.responseBody tar_gz_response
       tar_content = GZip.decompress tar_gz_content
-      tar_file_name = package_id_str ++ ".tar"
-  log logger ("Saving: " ++ tar_file_name)
-  ByteString.Lazy.writeFile tar_file_name tar_content
-  Tar.extract "." tar_file_name
-  removeFile tar_file_name
+  case getPackageFiles tar_content of
+    Nothing -> die ("downloadPackageArchive: could not parse the archive for " ++ package_name_str)
+    Just entries -> return entries
+
+getPackageFiles :: ByteString.Lazy.ByteString -> Maybe [PackageFile]
+getPackageFiles =
+    either (const Nothing) Just . Tar.foldlEntries f [] . Tar.read
+  where
+    f package_files e =
+      case get_package_file e of
+        Nothing -> package_files
+        Just package_file -> package_file : package_files
+    get_package_file e
+      | Tar.NormalFile content _ <- Tar.entryContent e =
+          Just (PackageFile (Tar.entryPath e) content)
+      | otherwise = Nothing
+
+downloadPackage :: Log.LoggerSet -> HTTP.Manager -> PackageName -> IO ()
+downloadPackage logger http_manager package_name = do
+  let package_name_str = packageNameStr package_name
+  package_id <- identifyPackage http_manager package_name
+  let package_id_str = Cabal.prettyShow package_id
+  log logger ("Constructed package_id: " ++ package_id_str)
+  package_files <- downloadPackageArchive http_manager package_id
+  traverse_ (writePackageFile ".") package_files
 
 header_accept_json :: HTTP.Header
 header_accept_json = (HTTP.hAccept, ByteString.Char8.pack "application/json")
