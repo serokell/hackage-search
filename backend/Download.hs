@@ -3,19 +3,15 @@
 
 module Main (main) where
 
-import Prelude hiding (log)
-import Control.Concurrent (myThreadId, getNumCapabilities)
+import Control.Concurrent (getNumCapabilities)
 import Control.Exception
-import Data.Text (Text)
 import Data.Foldable
-import Data.IORef
 import Control.Applicative
 import Control.Monad
+import Data.IORef
+import Data.Maybe (mapMaybe)
 import qualified Options.Applicative as Opt
 import qualified Data.List.Split as List
-import qualified Data.Text as Text
-import qualified Data.Aeson as JSON
-import qualified Data.Aeson.Types as JSON
 import qualified Network.HTTP.Client as HTTP
 import qualified Network.HTTP.Client.TLS as HTTP
 import qualified Network.HTTP.Types as HTTP
@@ -23,43 +19,25 @@ import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import qualified Data.ByteString.Lazy as ByteString.Lazy
 import qualified Distribution.Package as Cabal
+import qualified Distribution.Parsec as Cabal
 import qualified Distribution.Pretty as Cabal
-import qualified Distribution.PackageDescription.Parsec as Cabal
 import qualified Codec.Compression.GZip as GZip
 import qualified Codec.Archive.Tar as Tar
-import qualified System.Log.FastLogger as Log
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID (nextRandom)
 import qualified System.Posix.Files as POSIX
-import qualified Data.List as List
-import Data.String (fromString)
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Control.Concurrent.Async (forConcurrently_)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath
 import System.Directory
+import System.IO.Error
 import System.Exit (die)
 
 data Config =
   Config {
     configHackagePath :: FilePath
   }
-
-newtype PackageName = PackageName { packageNameText :: Text }
-
-packageNameStr :: PackageName -> String
-packageNameStr = Text.unpack . packageNameText
-
-instance JSON.FromJSON PackageName where
-  parseJSON (JSON.Object v) = do
-    name <- v JSON..: Text.pack "packageName"
-    return (PackageName name)
-  parseJSON invalid =
-    JSON.prependFailure "parsing PackageName failed, " $
-    JSON.typeMismatch "Object" invalid
-
-log :: Log.LoggerSet -> String -> IO ()
-log logger s = do
-  thread_id <- myThreadId
-  Log.pushLogStr logger (fromString ("[" ++ show thread_id ++ "] " ++ s ++ "\n"))
 
 configOptP :: Opt.Parser Config
 configOptP = do
@@ -72,24 +50,34 @@ main = do
     Opt.info (configOptP <**> Opt.helper)
       (Opt.fullDesc <> Opt.header "Hackage Download")
   http_manager <- HTTP.newTlsManager
-  bracket
-    (Log.newStdoutLoggerSet Log.defaultBufSize)
-    Log.flushLogStr
-    (\logger -> downloadHackage config logger http_manager)
+  downloadHackage config http_manager
 
-downloadHackage :: Config -> Log.LoggerSet -> HTTP.Manager -> IO ()
-downloadHackage config logger http_manager = do
-  all_package_ids <- requestPackages logger http_manager
+downloadHackage :: Config -> HTTP.Manager -> IO ()
+downloadHackage config http_manager = do
+  all_package_ids <- requestPackages config http_manager
   missing_package_ids <- dropCachedPackages config all_package_ids
   let package_count = length missing_package_ids
-  log logger ("Downloading " ++ show package_count ++ " packages")
-  forConcurrentlyInBuckets_ missing_package_ids (downloadPackage config http_manager)
-  updateManifest config all_package_ids
+  putStrLn ("Downloading " ++ show package_count ++ " packages")
+  bad_package_ids_ref <- newIORef Set.empty
+  forConcurrentlyInBuckets_ missing_package_ids $ \package_id -> do
+    skipKnownFailures
+      (atomicModifyIORef' bad_package_ids_ref (\acc -> (Set.insert package_id acc, ())))
+      (downloadPackage config http_manager package_id)
+  bad_package_ids <- readIORef bad_package_ids_ref
+  let good_package_ids = Set.fromList all_package_ids `Set.difference` bad_package_ids
+  updateBlacklist config bad_package_ids
+  updateManifest config good_package_ids
 
-updateManifest :: Config -> [Cabal.PackageId] -> IO ()
+updateBlacklist :: Config -> Set.Set Cabal.PackageId -> IO ()
+updateBlacklist config package_ids =
+  appendFile
+    (configHackagePath config </> "blacklist")
+    (unlines (map Cabal.prettyShow (Set.toList package_ids)))
+
+updateManifest :: Config -> Set.Set Cabal.PackageId -> IO ()
 updateManifest config package_ids = do
   withObjectPath config $ \manifest_object_path -> do
-    let manifest_content = unlines (List.sort (map Cabal.prettyShow package_ids))
+    let manifest_content = unlines (map Cabal.prettyShow (Set.toAscList package_ids))
         manifest_init_path = manifest_object_path </> "manifest"
         manifest_path = configHackagePath config </> "manifest"
     writeFile manifest_init_path manifest_content
@@ -110,17 +98,12 @@ packagePath config package_id = packagesPath config </> Cabal.prettyShow package
 filterOutM :: Applicative m => (a -> m Bool) -> [a] -> m [a]
 filterOutM f = filterM (fmap not . f)
 
-skipKnownFailures :: Log.LoggerSet -> PackageName -> IO a -> IO (Maybe a)
-skipKnownFailures logger package_name =
-    handleLegalReasons . handle410 . fmap Just
+skipKnownFailures :: IO () -> IO () -> IO ()
+skipKnownFailures on_fail =
+    handleLegalReasons . handle410
   where
-    handleLegalReasons = handleJust isLegalReasons $ \_ -> do
-      log logger ("Skipping " ++ package_name_str ++ ": unavailable for legal reasons")
-      return Nothing
-    handle410 = handleJust is410 $ \_ -> do
-      log logger ("Skipping " ++ package_name_str ++ ": 410 Gone")
-      return Nothing
-    package_name_str = packageNameStr package_name
+    handleLegalReasons = handleJust isLegalReasons (\_ -> on_fail)
+    handle410 = handleJust is410 (\_ -> on_fail)
 
     is410 (HTTP.HttpExceptionRequest _ (HTTP.StatusCodeException r _))
       | HTTP.statusCode (HTTP.responseStatus r) == 410
@@ -133,28 +116,47 @@ skipKnownFailures logger package_name =
       = Just ()
     isLegalReasons _ = Nothing
 
-requestPackages :: Log.LoggerSet -> HTTP.Manager -> IO [Cabal.PackageId]
-requestPackages logger http_manager = do
-  log logger "Requesting packages"
-  init_req <-
+requestPackages :: Config -> HTTP.Manager -> IO [Cabal.PackageId]
+requestPackages config http_manager = do
+  blacklist <-
+    handleJust (\e -> if isDoesNotExistError e then Just Set.empty else Nothing) return $
+    fmap (Set.fromList . mapMaybe Cabal.simpleParsec . lines) $
+    readFile (configHackagePath config </> "blacklist")
+  let blacklisted package_id = Set.member package_id blacklist
+  tar_gz_req <-
     fmap HTTP.setRequestCheckStatus $
-    HTTP.parseRequest "https://hackage.haskell.org/packages/"
-  let req = init_req { HTTP.requestHeaders = [header_accept_json] }
-  response <- HTTP.httpLbs req http_manager
-  package_names <-
-    case JSON.decode (HTTP.responseBody response) of
-      Nothing -> die "requestPackages: could not parse the response"
-      Just r -> return r
-  forConcurrentlyMaybe package_names (identifyPackage logger http_manager)
+    HTTP.parseRequest "https://hackage.haskell.org/01-index.tar.gz"
+  tar_gz_response <- HTTP.httpLbs tar_gz_req http_manager
+  let tar_gz_content = HTTP.responseBody tar_gz_response
+      tar_content = GZip.decompress tar_gz_content
+  case getPackageIds tar_content of
+    Nothing -> die "requestPackages: could not parse the index archive"
+    Just package_ids -> return (filter (not . blacklisted) package_ids)
 
-forConcurrentlyMaybe :: [a] -> (a -> IO (Maybe b)) -> IO [b]
-forConcurrentlyMaybe items f = do
-  results_ref <- newIORef []
-  forConcurrentlyInBuckets_ items $ \item -> do
-    m_result <- f item
-    for_ m_result $ \result -> do
-      atomicModifyIORef' results_ref (\results -> (result:results, ()))
-  readIORef results_ref
+getPackageIds :: ByteString.Lazy.ByteString -> Maybe [Cabal.PackageId]
+getPackageIds =
+    either (const Nothing) (Just . Map.elems) .
+    Tar.foldlEntries f Map.empty . Tar.read
+  where
+    f package_ids e =
+      case get_cabal_file e of
+        Nothing -> package_ids
+        Just gen_pkg_desc ->
+          let package_id = Cabal.packageId gen_pkg_desc
+          in Map.insertWith (max_on Cabal.pkgVersion)
+              (Cabal.pkgName package_id) package_id package_ids
+    get_cabal_file e
+      | [pkg_name_str, pkg_ver_str, cabal_file_name] <- splitDirectories (Tar.entryPath e),
+        takeExtension cabal_file_name == ".cabal",
+        Just pkg_name <- Cabal.simpleParsec pkg_name_str,
+        Just pkg_ver <- Cabal.simpleParsec pkg_ver_str
+      = Just (Cabal.PackageIdentifier pkg_name pkg_ver)
+      | otherwise = Nothing
+
+max_on :: Ord b => (a -> b) -> a -> a -> a
+max_on f a b
+  | f a > f b = a
+  | otherwise = b
 
 forConcurrentlyInBuckets_ :: [a] -> (a -> IO ()) -> IO ()
 forConcurrentlyInBuckets_ items process_item = do
@@ -162,25 +164,6 @@ forConcurrentlyInBuckets_ items process_item = do
   let chunk_size = max 1 (length items `div` num_capabilities)
       buckets = List.chunksOf chunk_size items
   forConcurrently_ buckets (traverse_ process_item)
-
-identifyPackage :: Log.LoggerSet -> HTTP.Manager -> PackageName -> IO (Maybe Cabal.PackageId)
-identifyPackage logger http_manager package_name =
-  skipKnownFailures logger package_name $ do
-    let package_name_str = packageNameStr package_name
-    cabal_file_req <-
-      fmap HTTP.setRequestCheckStatus $
-      HTTP.parseRequest $
-        "https://hackage.haskell.org/package/" ++
-          package_name_str ++ "/" ++ package_name_str ++ ".cabal"
-    cabal_file_response <- HTTP.httpLbs cabal_file_req http_manager
-    let cabal_file_contents = ByteString.Lazy.toStrict (HTTP.responseBody cabal_file_response)
-    package_id <-
-      case Cabal.parseGenericPackageDescriptionMaybe cabal_file_contents of
-        Nothing -> die ("downloadPackage: could not parse the cabal file for " ++ package_name_str)
-        Just gen_pkg_desc -> return (Cabal.packageId gen_pkg_desc)
-    let package_id_str = Cabal.prettyShow package_id
-    log logger ("Identified: " ++ package_id_str)
-    return package_id
 
 data PackageFile =
   PackageFile {
@@ -243,6 +226,3 @@ downloadPackage config http_manager package_id = do
     POSIX.rename -- NB. atomic
       (package_object_path </> Cabal.prettyShow package_id)
       (packagePath config package_id)
-
-header_accept_json :: HTTP.Header
-header_accept_json = (HTTP.hAccept, ByteString.Char8.pack "application/json")
