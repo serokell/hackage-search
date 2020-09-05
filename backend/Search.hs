@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilies, TypeOperators, PolyKinds, DataKinds,
              NamedFieldPuns, ApplicativeDo, MultiParamTypeClasses #-}
 
-module Main where
+module Main (main) where
 
 import System.IO
 import Control.Applicative
@@ -12,6 +12,7 @@ import qualified Network.Socket
 import qualified Data.Streaming.Network
 import qualified Options.Applicative as Opt
 import System.Process
+import Control.DeepSeq (rnf)
 import Control.Exception hiding (Handler)
 import Control.Monad.IO.Class
 import Data.Text (Text)
@@ -21,6 +22,7 @@ import qualified Data.Text.IO as Text
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Builder as ByteString.Builder
 import qualified Data.ByteString.Lazy as ByteString.Lazy
+import System.FilePath ((</>))
 
 data Config =
   Config {
@@ -66,21 +68,34 @@ instance ToSourceIO Text RgLineHandle where
         return Stop
 
 hackageSearchServer :: Config -> Server HackageSearchAPI
-hackageSearchServer Config{configHackagePath, configFrontEndPath} =
+hackageSearchServer config =
   searchH :<|> frontendH
   where
-    searchH :: String -> Handler RgLineHandle
-    searchH q = liftIO $ do
-      (_, Just hOut, Just hErr, p) <-
-        createProcess ((proc "rg" ["--json", "--no-ignore", "--context", "2", "--regexp", q])
-          { cwd = Just configHackagePath,
-            std_out = CreatePipe,
-            std_err = CreatePipe,
-            std_in = NoStream
-          })
-      return (RgLineHandle p hOut hErr)
-    frontendH =
-      serveDirectoryFileServer configFrontEndPath
+    searchH q = liftIO (rgSearch config q)
+    frontendH = serveDirectoryFileServer (configFrontEndPath config)
+
+packagesPath :: Config -> FilePath
+packagesPath config = configHackagePath config </> "packages"
+
+readManifest :: Config -> IO [String]
+readManifest config = do
+  s <- System.IO.readFile (configHackagePath config </> "manifest")
+  let package_ids = lines s
+  evaluate (rnf package_ids)
+  return package_ids
+
+rgSearch :: Config -> String -> IO RgLineHandle
+rgSearch config rg_pattern = do
+  package_ids <- readManifest config
+  let rg_opts = ["--json", "--no-ignore", "--context", "2", "--regexp", rg_pattern]
+  (_, Just hOut, Just hErr, p) <-
+    createProcess ((proc "rg" (rg_opts ++ package_ids))
+      { cwd = Just (packagesPath config),
+        std_out = CreatePipe,
+        std_err = CreatePipe,
+        std_in = NoStream
+      })
+  return (RgLineHandle p hOut hErr)
 
 jsonEncodeErr :: Text -> Text
 jsonEncodeErr err = process enc

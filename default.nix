@@ -23,6 +23,8 @@ let
       p.http-client-tls
       p.split
       p.tar
+      p.unix
+      p.uuid
     ]);
 
   backendInputs = [
