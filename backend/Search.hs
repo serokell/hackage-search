@@ -32,12 +32,9 @@ data Config =
   }
 
 type HackageSearchAPI =
-  "hackage-search" :>
-    (
-        "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText RgLineHandle
-      :<|>
-        Raw -- front-end
-    )
+    "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText RgLineHandle
+  :<|>
+    Raw -- front-end
 
 hackageSearchAPI :: Proxy HackageSearchAPI
 hackageSearchAPI = Proxy
