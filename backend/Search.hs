@@ -4,7 +4,9 @@
 module Main (main) where
 
 import System.IO
+import System.IO.Error
 import Control.Applicative
+import Control.Concurrent (threadDelay)
 import Servant
 import Servant.Types.SourceT
 import Network.Wai.Handler.Warp
@@ -76,10 +78,41 @@ packagesPath config = configHackagePath config </> "packages"
 
 readManifest :: Config -> IO [String]
 readManifest config = do
-  s <- System.IO.readFile (configHackagePath config </> "manifest")
+  s <-
+    retryIf isDoesNotExistError (3, to_micro 1) $ -- See Note [Manifest update]
+    System.IO.readFile (configHackagePath config </> "manifest")
   let package_ids = lines s
   evaluate (rnf package_ids)
   return package_ids
+
+{- Note [Manifest update]
+~~~~~~~~~~~~~~~~~~~~~~~~~
+The downloader updates the manifest in three steps:
+  1. create the new manifest
+  2. delete the old manifest
+  3. move the newly created manifest to the old path
+
+Step 3 is atomic, so we are always guaranteed to read a complete, valid
+manifest.  However, we may try to read in a time frame after step 2 and before
+step 3, when the manifest is missing. The solution is to wait a little and try
+to read it again.
+
+It's nigh impossible that step 3 will take as long as several seconds, so we
+give up aftewards and assume that the manifest is missing for another reason.
+-}
+
+to_micro :: Num a => a -> a
+to_micro = (*) 1000000
+
+retryIf :: Exception e => (e -> Bool) -> (Int, Int) -> IO a -> IO a
+retryIf p (n, d) act = go n
+  where
+    go 0 = act
+    go k =
+      handleJust
+        (\e -> if p e then Just () else Nothing)
+        (\() -> do threadDelay d; go (k-1))
+        act
 
 rgSearch :: Config -> String -> IO RgLineHandle
 rgSearch config rg_pattern = do
