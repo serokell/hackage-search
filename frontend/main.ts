@@ -1,91 +1,36 @@
 "use strict";
 
-const utf8_encoder = new TextEncoder();
 const utf8_decoder = new TextDecoder("utf-8");
 
-// ripgrep output record
-type RgOut =
+type SearchOut =
   | {
-      type: "begin",
-      data: { path: RgOutData }
+      type: "file"
+      package: string
+      path: string
+      lines: SearchOutLine[]
     }
   | {
-      type: "context",
-      data: {
-        path: RgOutData,
-        lines: RgOutData,
-        line_number: number,
-        absolute_offset: number,
-        submatches: RgOutMatch[]
-      }
+      type: "summary"
+      matches: number
     }
   | {
-      type: "match",
-      data: {
-        path: RgOutData,
-        lines: RgOutData,
-        line_number: number,
-        absolute_offset: number,
-        submatches: RgOutMatch[]
-      }
-    }
-  | {
-      type: "end",
-      data: {
-        path: RgOutData,
-        stats: RgOutStats
-      }
-    }
-  | {
-      type: "summary",
-      data: {
-        elapsed_total: RgOutDuration,
-        stats: RgOutStats
-      }
-    }
-  | {
-      type: "error",
+      type: "error"
       message: string
     }
 
-type RgOutMatch =
+type SearchOutLine =
   {
-    match: RgOutData,
-    start: number,
-    end: number
+    number: number
+    parts: SearchOutLinePart[]
   }
 
-type RgOutDuration =
+type SearchOutLinePart =
   {
-    human: string,
-    nanos: number,
-    secs: number
+    context?: string
+    match?: string
   }
 
-type RgOutData =
-  | { text: string }
-  // | { bytes: string }
-
-type RgOutStats =
-  {
-    elapsed: RgOutDuration,
-    searches: number,
-    searches_with_match: number,
-    bytes_searched: number,
-    bytes_printed: number,
-    matched_lines: number,
-    matches: number
-  }
-
-interface PathResultMap { [index: string]: Result; }
-
-type PkgResult =
-  {
-    element: Element
-    files: PathResultMap
-  }
-
-interface PkgResultMap { [index: string]: PkgResult; }
+interface PkgResultMap { [index: string]: Element }
 
 type Results =
   {
@@ -94,15 +39,9 @@ type Results =
     status: Element
   }
 
-type Result =
-  {
-    element: Element
-    last_line_number: number | null;
-  }
-
 type PkgCount =
   {
-    n: number;
+    n: number
   }
 
 window.onload = function () {
@@ -162,8 +101,8 @@ async function fetch_and_process(resource: string, result_map: PkgResultMap, res
       controller.abort();
       break;
     }
-    const j = <RgOut>JSON.parse(line);
-    await process_rg_out(j, pkg_count, result_map, results);
+    const j = <SearchOut>JSON.parse(line);
+    await process_search_out(j, pkg_count, result_map, results);
   }
 }
 
@@ -205,7 +144,7 @@ function append_Uint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
 function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: string, results: Results) {
   if (!result_map.hasOwnProperty(pkg_name)) {
     const pkg = instantiate_pkg_template(pkg_name);
-    result_map[pkg_name] = { element: pkg, files: {} };
+    result_map[pkg_name] = pkg;
     results.items.append(pkg);
     if (pkg_count.n === 0) {
       pkg.setAttribute("open", "");
@@ -215,32 +154,17 @@ function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: strin
   }
 }
 
-function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap, results: Results): Promise<void> {
-  if (j.type === "begin") {
-    const { pkg_name, path } = split_pkg_name(j.data.path.text);
-    const result = instantiate_result_template(path);
-    init_pkg(pkg_count, result_map, pkg_name, results);
-    const pkg = result_map[pkg_name];
-    pkg.files[path] = { element: result, last_line_number: null };
-  }
-  if (j.type === "context") {
-    const { pkg_name, path } = split_pkg_name(j.data.path.text);
-    const line = document.createElement("code");
-    line.textContent = j.data.lines.text;
-    const line_of_code = instantiate_line_of_code_template(j.data.line_number, line);
-    append_line_of_code(result_map[pkg_name].files, path, j.data.line_number, line_of_code);
-  }
-  if (j.type === "match") {
-    const { pkg_name, path } = split_pkg_name(j.data.path.text);
-    const line = document.createElement("code");
-    highlight_match(j.data.lines.text, line, j.data.submatches);
-    const line_of_code = instantiate_line_of_code_template(j.data.line_number, line);
-    append_line_of_code(result_map[pkg_name].files, path, j.data.line_number, line_of_code);
-  }
-  if (j.type === "end") {
-    const { pkg_name, path } = split_pkg_name(j.data.path.text);
-    const pkg = result_map[pkg_name];
-    pkg.element.append(pkg.files[path].element);
+function process_search_out(j: SearchOut, pkg_count: PkgCount, result_map: PkgResultMap, results: Results): Promise<void> {
+  if (j.type === "file") {
+    init_pkg(pkg_count, result_map, j.package, results);
+    const result = instantiate_result_template(j.path);
+    const result_code = result.querySelector(".result-code")!;
+    let last_line_number = null;
+    for (const result_line of j.lines) {
+      append_line_of_code(result_line, result_code, last_line_number);
+      last_line_number = result_line.number;
+    }
+    result_map[j.package].append(result);
   }
   if (j.type === "error") {
     const err = instantiate_error_template(j.message);
@@ -250,15 +174,28 @@ function process_rg_out(j: RgOut, pkg_count: PkgCount, result_map: PkgResultMap,
   if (j.type === "summary") {
     results.status.textContent =
       "Search completed ("
-        + summary_message(j.data.stats.matches, pkg_count.n)
+        + summary_message(j.matches, pkg_count.n)
         + ")";
   }
-  if (pkg_count.n % 3 == 0) {
-    return new Promise(r => setTimeout(r, 10)); // See Note [setTimeout in process_rg_out]
+  return new Promise(r => setTimeout(r, 10)); // See Note [setTimeout in process_search_out]
+}
+
+function process_line_parts(line_parts: SearchOutLinePart[]): Element {
+  const fmt_line = document.createElement("code");
+  for (const line_part of line_parts) {
+    const context = line_part.context ?? null;
+    if (context != null) {
+      fmt_line.append(context);
+    }
+    const match = line_part.match ?? null;
+    if (match != null) {
+      let fmt_span = document.createElement("span");
+      fmt_span.classList.add("match");
+      fmt_span.textContent = match;
+      fmt_line.append(fmt_span);
+    }
   }
-  else {
-    return Promise.resolve(void(0));
-  }
+  return fmt_line;
 }
 
 function summary_message(matches: number, pkg_count: number): string {
@@ -274,42 +211,33 @@ function pluralise(n: number, singular: string, plural: string): string {
   return n.toString() + ' ' + (n === 1 ? singular : plural);
 }
 
-/* Note [setTimeout in process_rg_out]
---------------------------------------
+/* Note [setTimeout in process_search_out]
+------------------------------------------
 
 In JavaScript, data processing and UI rendering happens in the same thread
 (without WebWorkers). So if the server responds with lots of data, we must
 take breaks from processing to let the browser handle UI events and render the
 page.
 
-A timeout for 10ms after every 10 processed packages seems to yield best UX.
+A timeout for 10ms after every search result seems to yield best UX.
 
 */
 
-type SplitPkgOut =
+type Result =
   {
-    pkg_name: string,
-    path: string
+    element: Element
+    last_line_number: number | null;
   }
 
-function split_pkg_name(full_path: string): SplitPkgOut {
-  const i = full_path.indexOf('/');
-  return {
-    pkg_name: full_path.slice(0, i),
-    path: full_path.slice(i+1)
-  }
-}
-
-function append_line_of_code(result_map: PathResultMap, path: string, line_number: number, line_of_code: Node) {
-  const result = result_map[path];
-  const result_code = result.element.querySelector(".result-code")!;
-  const continuous = result.last_line_number === null || result.last_line_number === line_number - 1;
+function append_line_of_code(result_line: SearchOutLine, result_code: Element, last_line_number: number | null) {
+  const line = process_line_parts(result_line.parts);
+  const line_of_code = instantiate_line_of_code_template(result_line.number, line);
+  const continuous = last_line_number === null || last_line_number === result_line.number - 1;
   if (!continuous) {
     const omission = clone_template("omission-template");
-    result_map[path].element.querySelector(".result-code")!.append(omission);
+    result_code.append(omission);
   }
   result_code.append(line_of_code);
-  result.last_line_number = line_number;
 }
 
 function instantiate_error_template(message: string): Element {
@@ -361,18 +289,4 @@ function clone_template(id: string): Element {
   const template = <HTMLTemplateElement>document.getElementById(id);
   const instance = <DocumentFragment>template.content.cloneNode(true);
   return instance.firstElementChild!;
-}
-
-function highlight_match(str: string, fmtstr: Element, submatches: RgOutMatch[]) {
-  const rawstr = utf8_encoder.encode(str);
-  let lastpos = 0;
-  for (const sub of submatches) {
-    fmtstr.append(utf8_decoder.decode(rawstr.slice(lastpos, sub.start)));
-    let fmtspan = document.createElement("span");
-    fmtspan.classList.add("match");
-    fmtspan.textContent = utf8_decoder.decode(rawstr.slice(sub.start, sub.end));
-    fmtstr.append(fmtspan);
-    lastpos = sub.end;
-  }
-  fmtstr.append(utf8_decoder.decode(rawstr.slice(lastpos)));
 }
