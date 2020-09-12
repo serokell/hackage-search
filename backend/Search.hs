@@ -57,10 +57,13 @@ data RgLineHandle =
     Handle
 
 instance ToSourceIO Text RgLineHandle where
-  toSourceIO (RgLineHandle p hOut hErr) = fromStepT (go processRg)
+  toSourceIO (RgLineHandle p hOut hErr) = fromStepT (go 0 processRg)
     where
-      go (ProcessRgYield s next) = Yield s (go next)
-      go (ProcessRgRequest f) = Effect $ do
+      go i (ProcessRgYield s next) = Yield s (go i next)
+      go i (ProcessRgPause next) = Effect $ do
+        threadDelay (slowdown i * 1000) -- See Note [Rate limiting]
+        return $ go (i+1) next
+      go i (ProcessRgRequest f) = Effect $ do
         eof <- hIsEOF hOut
         if eof then do
           err <- Text.hGetContents hErr
@@ -71,15 +74,33 @@ instance ToSourceIO Text RgLineHandle where
           s <- Text.hGetLine hOut
           return $
             case JSON.eitherDecode' (ByteString.Lazy.fromStrict (Text.encodeUtf8 s)) of
-              Left err -> go (ProcessRgFail (Text.pack err))
-              Right rg_out -> go (f rg_out)
-      go (ProcessRgFail err) = Yield (jsonEncodeErr err) stop
-      go (ProcessRgComplete matches) = Yield (jsonEncodeSummary matches) stop
+              Left err -> go i (ProcessRgFail (Text.pack err))
+              Right rg_out -> go i (f rg_out)
+      go _ (ProcessRgFail err) = Yield (jsonEncodeErr err) stop
+      go _ (ProcessRgComplete matches) = Yield (jsonEncodeSummary matches) stop
       stop = Effect $ do
         terminateProcess p
         hClose hOut
         hClose hErr
         return Stop
+
+-- Input: iteration number
+-- Output: delay in milliseconds
+slowdown :: Int -> Int
+slowdown i = min 1000 (i `quot` 100)
+
+{- Note [Rate limiting]
+~~~~~~~~~~~~~~~~~~~~~~~
+If the user query matches many files, then processing the request and producing
+the results will be very CPU-intensive. And that's bad for several reasons:
+
+  1. There's no point producing results faster than the front-end can handle them
+  2. We don't want to expose a denial-of-service attack surface
+  3. The user can't possibly read the results that fast anyway
+
+We mitigate the issue by waiting for longer and longer periods of time for
+every next result.
+-}
 
 hackageSearchServer :: Config -> Server HackageSearchAPI
 hackageSearchServer config =
@@ -413,6 +434,7 @@ splitPkgId s =
 
 data ProcessRg
   = ProcessRgYield !Text {- lazy tail -} ProcessRg
+  | ProcessRgPause {- lazy tail -} ProcessRg
   | ProcessRgRequest !(RgOut -> ProcessRg)
   | ProcessRgFail !Text
   | ProcessRgComplete !Int
@@ -460,7 +482,9 @@ processRgOut pkg_result_map rg_out
             file_id
             pkg_result_line
             pkg_result_map
-    processRgOut' pkg_result_map'
+    let pause | null rg_out_match_submatches = id
+              | otherwise = ProcessRgPause
+    pause (processRgOut' pkg_result_map')
 
   | RgOutSummary{rg_out_summary_stats} <- rg_out
   = ProcessRgComplete (rg_out_stats_matches rg_out_summary_stats)
