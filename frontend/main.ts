@@ -58,6 +58,19 @@ window.onload = function () {
     search_field.value = search_q;
     run_search(search_q);
   }
+  const button_expand_all = document.getElementById("button-expand-all")!;
+  const button_collapse_all = document.getElementById("button-collapse-all")!;
+  button_expand_all.addEventListener("click", event => { set_details_open(true) });
+  button_collapse_all.addEventListener("click", event => { set_details_open(false) });
+}
+
+function set_details_open (open_value: boolean) {
+  const results = document.getElementById("results");
+  if (results != null) {
+    results.querySelectorAll("details").forEach(details => {
+      details.open = open_value;
+    })
+  }
 }
 
 function run_search(q: string) {
@@ -259,8 +272,6 @@ function instantiate_results_template(): Results {
 }
 
 function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
-  const button_expand_all = document.getElementById("button-expand-all")!;
-  const button_collapse_all = document.getElementById("button-collapse-all")!;
   const pkg = <HTMLDetailsElement>clone_template("package-template");
   pkg.querySelector("summary")!.textContent = pkg_name;
   pkg.addEventListener("toggle", event => {
@@ -270,12 +281,6 @@ function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
     else {
       pkg.scrollIntoView({behavior: "auto", block: "center"});
     }
-  })
-  button_expand_all.addEventListener("click", event => {
-    pkg.open = true;
-  })
-  button_collapse_all.addEventListener("click", event => {
-    pkg.open = false;
   })
   return pkg;
 }
