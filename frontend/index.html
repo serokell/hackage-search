@@ -13,11 +13,17 @@
     <main>
       <h1> Hackage Search </h1>
         <div class="search">
+          <div class="controls">
+            <div>
+              <button>Expand All</button>
+              <button>Collapse All</button>
+            </div>
+            <a href="https://docs.rs/regex/1/regex/#syntax"> Regex Syntax Reference </a>
+          </div>
           <div class="search-bar">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75.14 75.14" id="glass"><path d="M74.68 70.25L52.85 48.43a29.82 29.82 0 10-4.42 4.42l21.82 21.83a1.58 1.58 0 002.22 0l2.21-2.21a1.58 1.58 0 000-2.22zm-44.94-17a23.48 23.48 0 1123.48-23.51 23.5 23.5 0 01-23.48 23.48z" xmlns="http://www.w3.org/2000/svg"></path></svg>
             <input type="text" id="search-field" autofocus>
           </div>
-          <a href="https://docs.rs/regex/1/regex/#syntax"> Regex Syntax Reference </a>
         </div>
         <div id="results"></div>
         <template id="results-template">
