@@ -147,7 +147,7 @@ function init_pkg(pkg_count: PkgCount, result_map: PkgResultMap, pkg_name: strin
     result_map[pkg_name] = pkg;
     results.items.append(pkg);
     if (pkg_count.n === 0) {
-      pkg.setAttribute("open", "");
+      pkg.open = true;
       pkg.querySelector("summary")!.focus();
     };
     pkg_count.n++;
@@ -259,6 +259,8 @@ function instantiate_results_template(): Results {
 }
 
 function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
+  const button_expand_all = document.getElementById("button-expand-all")!;
+  const button_collapse_all = document.getElementById("button-collapse-all")!;
   const pkg = <HTMLDetailsElement>clone_template("package-template");
   pkg.querySelector("summary")!.textContent = pkg_name;
   pkg.addEventListener("toggle", event => {
@@ -268,6 +270,12 @@ function instantiate_pkg_template(pkg_name: string): HTMLDetailsElement {
     else {
       pkg.scrollIntoView({behavior: "auto", block: "center"});
     }
+  })
+  button_expand_all.addEventListener("click", event => {
+    pkg.open = true;
+  })
+  button_collapse_all.addEventListener("click", event => {
+    pkg.open = false;
   })
   return pkg;
 }
