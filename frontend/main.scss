@@ -64,8 +64,8 @@ main {
 }
 
 details > summary { list-style-type: none; }
-detauls > details summary::-webkit-details-marker { display: none; }
 details > summary::marker { display: none; }
+details > summary::-webkit-details-marker { display: none; }
 
 .package {
   display: inline-block;
