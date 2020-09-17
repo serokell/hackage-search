@@ -61,11 +61,11 @@ rec {
       name = "hackage-download";
       src = ./backend;
       buildCommand = ''
-        mkdir -p "$out"
+        mkdir -p "$out/bin"
         mkdir backend-build-artifacts
         ghc "$src/Download.hs" \
           -outputdir backend-build-artifacts \
-          -o "$out/hackage-download" \
+          -o "$out/bin/hackage-download" \
           -Wall -threaded -O2 -with-rtsopts="-N"
       '';
       buildInputs = backendInputs;
@@ -77,11 +77,11 @@ rec {
       name = "hackage-search";
       src = ./backend;
       buildCommand = ''
-        mkdir -p "$out"
+        mkdir -p "$out/bin"
         mkdir backend-build-artifacts
         ghc "$src/Search.hs" \
           -outputdir backend-build-artifacts \
-          -o "$out/hackage-search" \
+          -o "$out/bin/hackage-search" \
           -Wall -threaded -O2 -with-rtsopts="-N"
       '';
       buildInputs = backendInputs;
@@ -93,14 +93,19 @@ rec {
       name = "hackage-search-frontend";
       src = ./frontend;
       buildCommand = ''
-        mkdir -p "$out"
+        mkdir -p "$out/html"
         runghc "$src/Build.hs" \
           --src "$src" \
-          --out "$out/index.html"
+          --out "$out/html/index.html"
       '';
       buildInputs = frontendInputs;
       inherit LOCALE_ARCHIVE;
     };
+
+  release = pkgs.buildEnv {
+    name = "hackage-search-release";
+    paths = [ frontend download search ];
+  };
 
   shell =
     pkgs.mkShell rec {
