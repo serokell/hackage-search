@@ -5,7 +5,7 @@ let
 in
 
 { pkgs ? import (builtins.fetchTarball nixpkgsPin) {},
-  hc ? "ghc882"
+  hc ? "ghc884"
 }:
 
 let
@@ -43,10 +43,10 @@ let
   ];
 
   shellInputs = [
-    pkgs.inotify-tools
     pkgs.haskellPackages.html-validator-cli
     pkgs.ghcid
-  ];
+  ] ++
+  (if pkgs.stdenv.isLinux then [pkgs.inotify-tools] else []);
 
   LOCALE_ARCHIVE =
     if pkgs.stdenv.isLinux
