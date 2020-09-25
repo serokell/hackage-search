@@ -74,6 +74,7 @@ details > summary::-webkit-details-marker { display: none; }
   border: 1px solid $neutral-color;
   border-radius: 3px;
   margin: 3px;
+  scroll-margin-top: 100px;
 }
 
 .package[open] {
