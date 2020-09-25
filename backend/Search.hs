@@ -358,15 +358,19 @@ instance JSON.FromJSON RgOutDuration where
           rg_out_duration_secs
         }
 
-data RgOutData =
-  RgOutDataText { rg_text :: !Text }
-  -- RgOutDataBytes { rg_out_data_bytes :: Text }
+data RgOutData
+  = RgOutDataText !Text
+  | RgOutDataBytes !Text
 
 instance JSON.FromJSON RgOutData where
   parseJSON =
     JSON.withObject "RgOutData" $ \j -> do
-      rg_text <- j JSON..: Text.pack "text"
-      return RgOutDataText{ rg_text }
+      m_rg_text <- j JSON..:? Text.pack "text"
+      case m_rg_text of
+        Just rg_text -> return (RgOutDataText rg_text)
+        Nothing -> do
+          rg_bytes <- j JSON..: Text.pack "bytes"
+          return (RgOutDataBytes rg_bytes)
 
 --------------------------- Processing rg output -------------------------------
 
@@ -451,16 +455,22 @@ withSplitPkgId rg_path cont =
     Left err -> ProcessRgFail err
     Right file_id -> cont file_id
 
+withTextPath :: RgOutData -> (Text -> ProcessRg) -> ProcessRg
+withTextPath (RgOutDataBytes _) _ = ProcessRgFail (Text.pack "Invalid file path")
+withTextPath (RgOutDataText path) cont = cont path
+
 processRgOut :: PkgResultMap -> RgOut -> ProcessRg
 processRgOut pkg_result_map rg_out
 
   | RgOutBegin{rg_out_begin_path} <- rg_out
-  = withSplitPkgId (rg_text rg_out_begin_path) $ \file_id -> do
+  = withTextPath rg_out_begin_path $ \path ->
+    withSplitPkgId path $ \file_id -> do
     let pkg_result_map' = initPkgResultFile file_id pkg_result_map
     processRgOut' pkg_result_map'
 
   | RgOutEnd{rg_out_end_path} <- rg_out
-  = withSplitPkgId (rg_text rg_out_end_path) $ \file_id ->
+  = withTextPath rg_out_end_path $ \path ->
+    withSplitPkgId path $ \file_id ->
     takePkgResultFile file_id pkg_result_map $ \pkg_res pkg_result_map' -> do
     let pkg_res_json = jsonEncodingToText (encodePkgResult file_id pkg_res)
     ProcessRgYield pkg_res_json (processRgOut' pkg_result_map')
@@ -471,20 +481,26 @@ processRgOut pkg_result_map rg_out
       rg_out_match_line_number,
       rg_out_match_submatches
     } <- rg_out
-  = withSplitPkgId (rg_text rg_out_match_path) $ \file_id -> do
-    let pkg_result_line =
-          mkPkgResultLine
-            rg_out_match_line_number
-            (rg_text rg_out_match_lines)
-            rg_out_match_submatches
-    let pkg_result_map' =
-          addLineToPkgResultFile
-            file_id
-            pkg_result_line
-            pkg_result_map
-    let pause | null rg_out_match_submatches = id
-              | otherwise = ProcessRgPause
-    pause (processRgOut' pkg_result_map')
+  = withTextPath rg_out_match_path $ \path ->
+    withSplitPkgId path $ \file_id ->
+    case rg_out_match_lines of
+      RgOutDataBytes _ ->
+        -- skip non-UTF8 matches
+        ProcessRgPause (processRgOut' pkg_result_map)
+      RgOutDataText match_lines -> do
+        let pkg_result_line =
+              mkPkgResultLine
+                rg_out_match_line_number
+                match_lines
+                rg_out_match_submatches
+        let pkg_result_map' =
+              addLineToPkgResultFile
+                file_id
+                pkg_result_line
+                pkg_result_map
+        let pause | null rg_out_match_submatches = id
+                  | otherwise = ProcessRgPause
+        pause (processRgOut' pkg_result_map')
 
   | RgOutSummary{rg_out_summary_stats} <- rg_out
   = ProcessRgComplete (rg_out_stats_matches rg_out_summary_stats)
