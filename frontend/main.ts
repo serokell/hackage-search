@@ -74,6 +74,7 @@ function set_details_open (open_value: boolean) {
 }
 
 function run_search(q: string) {
+  set_title(q);
   const result_map: PkgResultMap = {}
   const old_results = document.getElementById("results")!;
   const results = instantiate_results_template();
@@ -101,6 +102,10 @@ function set_search_q(q: string) {
   const new_url = new URL(window.location.href);
   new_url.searchParams.set("q", q);
   history.replaceState(null, "", new_url.toString());
+}
+
+function set_title(q: string) {
+  document.title = "Hackage Search: " + q;
 }
 
 async function fetch_and_process(resource: string, result_map: PkgResultMap, results: Results) {
