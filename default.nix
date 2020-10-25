@@ -20,6 +20,7 @@ let
   ghcWithPackages =
     haskellPackages.ghcWithPackages (p: [
       p.servant-server
+      p.servant-blaze
       p.http-client-tls
       p.split
       p.tar

@@ -7,9 +7,11 @@ module Main (main) where
 import System.IO
 import System.IO.Error
 import Control.Applicative
+import Control.Monad
 import Control.Concurrent (threadDelay)
 import Servant
 import Servant.Types.SourceT
+import Servant.HTML.Blaze (HTML)
 import Network.Wai.Handler.Warp
 import Data.Monoid
 import qualified Network.Socket
@@ -19,6 +21,7 @@ import System.Process
 import Control.DeepSeq (rnf)
 import Control.Exception hiding (Handler)
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Maybe
 import Data.Text (Text)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
@@ -30,10 +33,13 @@ import qualified Data.Aeson.Encoding.Internal as JSON (pairStr, list)
 import qualified Data.ByteString.Builder as ByteString.Builder
 import qualified Data.ByteString.Lazy as ByteString.Lazy
 import System.FilePath ((</>))
+import qualified System.FilePath as FilePath
 import qualified Distribution.Package as Cabal
 import qualified Distribution.Parsec as Cabal
 import qualified Distribution.Pretty as Cabal
 import qualified Data.Map as Map
+import qualified Text.Blaze.Html5 as H
+import qualified Text.Blaze.Html5.Attributes as H.A
 
 data Config =
   Config {
@@ -44,6 +50,8 @@ data Config =
 
 type HackageSearchAPI =
     "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText RgLineHandle
+  :<|>
+    "viewfile" :> CaptureAll "segments" String :> Get '[HTML] H.Html
   :<|>
     Raw -- front-end
 
@@ -104,9 +112,14 @@ every next result.
 
 hackageSearchServer :: Config -> Server HackageSearchAPI
 hackageSearchServer config =
-  searchH :<|> frontendH
+  searchH :<|> viewfileH :<|> frontendH
   where
     searchH q = liftIO (rgSearch config q)
+    viewfileH q = do
+      mResult <- liftIO (viewFile config q)
+      case mResult of
+        Nothing -> throwError err400
+        Just r -> return r
     frontendH = serveDirectoryFileServer (configFrontEndPath config)
 
 packagesPath :: Config -> FilePath
@@ -562,3 +575,60 @@ takePkgResultFile file_id (PkgResultMap m) cont =
   case Map.lookup file_id m of
     Nothing -> ProcessRgFail (Text.pack ("file not in the result map: " ++ pprFileId file_id))
     Just pkg_result_file -> cont pkg_result_file (PkgResultMap (Map.delete file_id m))
+
+viewFile :: Config -> [String] -> IO (Maybe H.Html)
+viewFile config userstring = runMaybeT $ do
+  userfilepath <- MaybeT (return (validateFilePath userstring))
+  let filepath = packagesPath config </> userfilepath
+  contents <- MaybeT (readFileIfExists filepath)
+  let html = renderFile userfilepath contents
+  MaybeT (return (Just html))
+
+readFileIfExists :: FilePath -> IO (Maybe String)
+readFileIfExists path =
+  handleJust
+    (\e -> if isDoesNotExistError e then Just () else Nothing)
+    (\() -> return Nothing)
+    (fmap Just (System.IO.readFile path))
+
+-- (hopefully) prevents access outside packagesPath
+validateFilePath :: [String] -> Maybe FilePath
+validateFilePath path_pieces = do
+    mapM_ (\p -> guard (isValidPathPiece p)) path_pieces
+    let path = FilePath.joinPath path_pieces
+    guard (FilePath.isValid path && FilePath.isRelative path)
+    Just path
+  where
+    isValidPathPiece p
+      | [r] <- FilePath.splitPath p,
+        r /= ".",
+        r /= ".."
+      = True
+      | otherwise = False
+
+renderFile :: FilePath -> String -> H.Html
+renderFile userfilepath s = H.docTypeHtml $ do
+  H.head $ do
+    H.title (H.toHtml ("Hackage Search: " ++ userfilepath))
+    H.style (H.preEscapedToHtml cssStyle)
+  H.body $ do
+    H.pre $ H.table $ do
+      forM_ (zip lineNumbers (lines s)) $ \(lineNumber, line) -> do
+        let lineNumberId = H.preEscapedStringValue ("line-" ++ lineNumber)
+        H.tr H.! H.A.id lineNumberId $ do
+          H.td (H.toHtml lineNumber)
+          H.td (H.toHtml line)
+  where
+    cssStyle =
+      "body{background:#fdf6e3}\
+      \body,pre{margin:0}\
+      \table{border-collapse:collapse}\
+      \td:first-child{user-select:none;\
+                     \background:#eee;\
+                     \color:#888;\
+                     \text-align:right;\
+                     \padding:3px}\
+      \td{padding-left:10px}"
+
+lineNumbers :: [String]
+lineNumbers = map show [1 :: Word ..]

@@ -88,10 +88,19 @@ function run_search(q: string) {
     });
 }
 
-function rg_endpoint(q: string): string {
+function endpoint_path(endpoint: string): string {
   const current_path = window.location.pathname;
-  const rg_suffix = current_path.substr(-1) == '/' ? 'rg/' : '/rg/';
-  return current_path + rg_suffix + encodeURIComponent(q);
+  const slash = current_path.substr(-1) == '/' ? '' : '/';
+  return current_path + slash + endpoint + '/';
+}
+
+function rg_endpoint(q: string): string {
+  return endpoint_path('rg') + encodeURIComponent(q);
+}
+
+function viewfile_endpoint(filepath: string, line_number_str: string): string {
+  const upath = filepath.split('/').map(s => encodeURIComponent(s)).join('/');
+  return endpoint_path('viewfile') + upath + '#line-' + line_number_str;
 }
 
 function get_search_q(): (string | null) {
@@ -177,9 +186,10 @@ function process_search_out(j: SearchOut, pkg_count: PkgCount, result_map: PkgRe
     init_pkg(pkg_count, result_map, j.package, results);
     const result = instantiate_result_template(j.path);
     const result_code = result.querySelector(".result-code")!;
+    const filepath = j.package + '/' + j.path;
     let last_line_number = null;
     for (const result_line of j.lines) {
-      append_line_of_code(result_line, result_code, last_line_number);
+      append_line_of_code(filepath, result_line, result_code, last_line_number);
       last_line_number = result_line.number;
     }
     result_map[j.package].append(result);
@@ -198,8 +208,11 @@ function process_search_out(j: SearchOut, pkg_count: PkgCount, result_map: PkgRe
   return new Promise(r => setTimeout(r, 10)); // See Note [setTimeout in process_search_out]
 }
 
-function process_line_parts(line_parts: SearchOutLinePart[]): Element {
+type ProcessedLine = { element: Element, is_match: boolean }
+
+function process_line_parts(line_parts: SearchOutLinePart[]): ProcessedLine {
   const fmt_line = document.createElement("code");
+  let is_match = false;
   for (const line_part of line_parts) {
     const context = line_part.context ?? null;
     if (context != null) {
@@ -207,13 +220,14 @@ function process_line_parts(line_parts: SearchOutLinePart[]): Element {
     }
     const match = line_part.match ?? null;
     if (match != null) {
+      is_match = true;
       let fmt_span = document.createElement("span");
       fmt_span.classList.add("match");
       fmt_span.textContent = match;
       fmt_line.append(fmt_span);
     }
   }
-  return fmt_line;
+  return { element: fmt_line, is_match: is_match };
 }
 
 function summary_message(matches: number, pkg_count: number): string {
@@ -247,9 +261,9 @@ type Result =
     last_line_number: number | null;
   }
 
-function append_line_of_code(result_line: SearchOutLine, result_code: Element, last_line_number: number | null) {
-  const line = process_line_parts(result_line.parts);
-  const line_of_code = instantiate_line_of_code_template(result_line.number, line);
+function append_line_of_code(filepath: string, result_line: SearchOutLine, result_code: Element, last_line_number: number | null) {
+  const processed_line = process_line_parts(result_line.parts);
+  const line_of_code = instantiate_line_of_code_template(filepath, result_line.number, processed_line);
   const continuous = last_line_number === null || last_line_number === result_line.number - 1;
   if (!continuous) {
     const omission = clone_template("omission-template");
@@ -296,10 +310,20 @@ function instantiate_result_template(header: string): Element {
   return result;
 }
 
-function instantiate_line_of_code_template(line_number: number, line: Node): Element {
+function instantiate_line_of_code_template(filepath: string, line_number: number, line: ProcessedLine): Element {
   const line_of_code = clone_template("line-of-code-template");
-  line_of_code.querySelector(".line-number")!.textContent = line_number.toString();
-  line_of_code.querySelector(".line")!.append(line);
+  line_of_code.querySelector(".line")!.append(line.element);
+  const line_number_element = line_of_code.querySelector(".line-number")!;
+  const line_number_str = line_number.toString();
+  if (line.is_match) {
+    const fmt_line_number = document.createElement("a");
+    fmt_line_number.href = viewfile_endpoint(filepath, line_number_str);
+    fmt_line_number.textContent = line_number_str;
+    line_number_element.append(fmt_line_number);
+  }
+  else {
+    line_number_element.textContent = line_number_str;
+  }
   return line_of_code;
 }
 
