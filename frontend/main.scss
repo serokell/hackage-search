@@ -219,6 +219,10 @@ hr {
   border: 1px dotted $neutral-color;
 }
 
+.line-number a, .line-number a:visited {
+  color: inherit;
+}
+
 .controls button:hover {
   color: white;
   background: #333;
