@@ -59,8 +59,14 @@ main = do
 
 downloadHackage :: Config -> HTTP.Manager -> Logger -> IO ()
 downloadHackage config http_manager logger = do
+  log logger LogIndexDownload
   all_package_ids <- requestPackages config http_manager logger
-  missing_package_ids <- dropCachedPackages config all_package_ids
+  log logger (LogIndexedPackageCount (length all_package_ids))
+  (blacklisted_package_ids, nonblacklisted_package_ids) <- partitionBlacklisted config all_package_ids
+  log logger (LogBlacklistedPackageCount (Set.size blacklisted_package_ids))
+  log logger (LogIndexedNonBlacklistedPackageCount (length nonblacklisted_package_ids))
+  (missing_package_ids, ondisk_package_ids) <- partitionCached config nonblacklisted_package_ids
+  log logger (LogOndiskPackageCount (length ondisk_package_ids))
   log logger (LogMissingPackageCount (length missing_package_ids))
   let scheduled_package_ids = takeMaybe (configLimit config) missing_package_ids
   log logger (LogScheduledPackageCount (length scheduled_package_ids))
@@ -68,11 +74,14 @@ downloadHackage config http_manager logger = do
   forConcurrentlyInBuckets_ logger scheduled_package_ids $ \package_id -> do
     skipKnownFailures
       (atomicModifyIORef' bad_package_ids_ref (\acc -> (Set.insert package_id acc, ())))
-      (downloadPackage config http_manager logger package_id)
+      (do log logger (LogPackageDownloadStart package_id)
+          downloadPackage config http_manager package_id
+          log logger (LogPackageDownloadEnd package_id))
   bad_package_ids <- readIORef bad_package_ids_ref
-  let good_package_ids = Set.fromList all_package_ids `Set.difference` bad_package_ids
+  let downloaded_package_ids = Set.fromList scheduled_package_ids `Set.difference` bad_package_ids
+      available_package_ids = Set.fromList ondisk_package_ids `Set.union` downloaded_package_ids
   updateBlacklist config bad_package_ids
-  updateManifest config good_package_ids
+  updateManifest config available_package_ids
 
 takeMaybe :: Maybe Int -> [a] -> [a]
 takeMaybe Nothing = id
@@ -96,17 +105,23 @@ updateManifest config package_ids = do
       manifest_init_path
       manifest_path
 
-dropCachedPackages :: Config -> [Cabal.PackageId] -> IO [Cabal.PackageId]
-dropCachedPackages config = filterOutM (doesPathExist . packagePath config)
+partitionCached :: Config -> [Cabal.PackageId] -> IO ([Cabal.PackageId], [Cabal.PackageId])
+partitionCached config = partitionM (doesPathExist . packagePath config)
+
+partitionM :: Monad m => (a -> m Bool) -> [a] -> m ([a], [a])
+partitionM check = foldM go ([], [])
+  where
+    go acc item = fmap (add acc item) (check item)
+    add (acc_false, acc_true) item b =
+      case b of
+        False -> (item : acc_false, acc_true)
+        True  -> (acc_false, item : acc_true)
 
 packagesPath :: Config -> FilePath
 packagesPath config = configHackagePath config </> "packages"
 
 packagePath :: Config -> Cabal.PackageId -> FilePath
 packagePath config package_id = packagesPath config </> Cabal.prettyShow package_id
-
-filterOutM :: Applicative m => (a -> m Bool) -> [a] -> m [a]
-filterOutM f = filterM (fmap not . f)
 
 skipKnownFailures :: IO () -> IO () -> IO ()
 skipKnownFailures on_fail =
@@ -131,27 +146,24 @@ requestPackages config http_manager logger = do
   tar_gz_req <-
     fmap HTTP.setRequestCheckStatus $
     HTTP.parseRequest "https://hackage.haskell.org/01-index.tar.gz"
-  log logger LogIndexDownload
   tar_gz_response <- HTTP.httpLbs tar_gz_req http_manager
   let tar_gz_content = HTTP.responseBody tar_gz_response
       tar_content = GZip.decompress tar_gz_content
   case getPackageIds tar_content of
     Nothing -> die "requestPackages: could not parse the index archive"
-    Just package_ids -> do
-      log logger (LogIndexedPackageCount (length package_ids))
-      nonblacklisted_package_ids <- removeBlacklisted config logger package_ids
-      log logger (LogIndexedNonBlacklistedPackageCount (length nonblacklisted_package_ids))
-      return nonblacklisted_package_ids
+    Just package_ids -> return package_ids
 
-removeBlacklisted :: Config -> Logger -> [Cabal.PackageId] -> IO [Cabal.PackageId]
-removeBlacklisted config logger package_ids = do
+partitionBlacklisted :: Config -> [Cabal.PackageId] -> IO (Set.Set Cabal.PackageId, [Cabal.PackageId])
+partitionBlacklisted config package_ids = do
   blacklist <-
     handleJust (\e -> if isDoesNotExistError e then Just Set.empty else Nothing) return $
     fmap (Set.fromList . mapMaybe Cabal.simpleParsec . lines) $
     readFile (configHackagePath config </> "blacklist")
-  log logger (LogBlacklistedPackageCount (Set.size blacklist))
   let blacklisted package_id = Set.member package_id blacklist
-  return $ filter (not . blacklisted) package_ids
+  return (blacklist, filterOut blacklisted package_ids)
+
+filterOut :: (a -> Bool) -> [a] -> [a]
+filterOut f = filter (not . f)
 
 getPackageIds :: ByteString.Lazy.ByteString -> Maybe [Cabal.PackageId]
 getPackageIds =
@@ -238,17 +250,15 @@ withObjectPath config =
       createDirectoryIfMissing True object_path
       return object_path
 
-downloadPackage :: Config -> HTTP.Manager -> Logger -> Cabal.PackageId -> IO ()
-downloadPackage config http_manager logger package_id = do
+downloadPackage :: Config -> HTTP.Manager -> Cabal.PackageId -> IO ()
+downloadPackage config http_manager package_id = do
   withObjectPath config $ \package_object_path -> do
-    log logger (LogPackageDownloadStart package_id)
     package_files <- downloadPackageArchive http_manager package_id
     traverse_ (writePackageFile package_object_path) package_files
     createDirectoryIfMissing True (packagesPath config)
     POSIX.rename -- NB. atomic
       (package_object_path </> Cabal.prettyShow package_id)
       (packagePath config package_id)
-    log logger (LogPackageDownloadEnd package_id)
 
 newtype Logger = Logger { log :: LogMessage -> IO () }
 
@@ -283,8 +293,10 @@ data LogMessage =
   | LogIndexedPackageCount !Int
   | LogBlacklistedPackageCount !Int
   | LogIndexedNonBlacklistedPackageCount !Int
+  | LogOndiskPackageCount !Int
   | LogMissingPackageCount !Int
   | LogScheduledPackageCount !Int
+  | LogDownloadedPackageCount !Int
   | LogThreadCount !Int !Int
   | LogPackageDownloadStart Cabal.PackageId
   | LogPackageDownloadEnd Cabal.PackageId
@@ -298,10 +310,14 @@ renderLogMessage (LogBlacklistedPackageCount n) =
   "Blacklisted packages: " ++ show n
 renderLogMessage (LogIndexedNonBlacklistedPackageCount n) =
   "Indexed packages not in the blacklist: " ++ show n
+renderLogMessage (LogOndiskPackageCount n) =
+  "Cached packages (already on disk): " ++ show n
 renderLogMessage (LogMissingPackageCount n) =
   "Missing packages (download required): " ++ show n
 renderLogMessage (LogScheduledPackageCount n) =
   "Scheduled for download packages: " ++ show n
+renderLogMessage (LogDownloadedPackageCount n) =
+  "Downloaded packages: " ++ show n
 renderLogMessage (LogThreadCount ncaps buckets) =
   "Using " ++ show buckets ++ " threads out of " ++
     show ncaps ++ " available (use +RTS -N to specify)"
