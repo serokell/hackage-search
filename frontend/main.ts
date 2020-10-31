@@ -210,7 +210,7 @@ function process_search_out(j: SearchOut, pkg_count: PkgCount, result_map: PkgRe
 
 type ProcessedLine = { element: Element, is_match: boolean }
 
-function process_line_parts(line_parts: SearchOutLinePart[]): ProcessedLine {
+function process_line_parts(viewfile_href: string, line_parts: SearchOutLinePart[]): ProcessedLine {
   const fmt_line = document.createElement("code");
   let is_match = false;
   for (const line_part of line_parts) {
@@ -221,10 +221,11 @@ function process_line_parts(line_parts: SearchOutLinePart[]): ProcessedLine {
     const match = line_part.match ?? null;
     if (match != null) {
       is_match = true;
-      let fmt_span = document.createElement("span");
-      fmt_span.classList.add("match");
-      fmt_span.textContent = match;
-      fmt_line.append(fmt_span);
+      let fmt_a = document.createElement("a");
+      fmt_a.href = viewfile_href;
+      fmt_a.classList.add("match");
+      fmt_a.textContent = match;
+      fmt_line.append(fmt_a);
     }
   }
   return { element: fmt_line, is_match: is_match };
@@ -262,8 +263,7 @@ type Result =
   }
 
 function append_line_of_code(filepath: string, result_line: SearchOutLine, result_code: Element, last_line_number: number | null) {
-  const processed_line = process_line_parts(result_line.parts);
-  const line_of_code = instantiate_line_of_code_template(filepath, result_line.number, processed_line);
+  const line_of_code = instantiate_line_of_code_template(filepath, result_line);
   const continuous = last_line_number === null || last_line_number === result_line.number - 1;
   if (!continuous) {
     const omission = clone_template("omission-template");
@@ -310,14 +310,16 @@ function instantiate_result_template(header: string): Element {
   return result;
 }
 
-function instantiate_line_of_code_template(filepath: string, line_number: number, line: ProcessedLine): Element {
+function instantiate_line_of_code_template(filepath: string, result_line: SearchOutLine): Element {
+  const line_number_str = result_line.number.toString();
+  const viewfile_href = viewfile_endpoint(filepath, line_number_str);
+  const processed_line = process_line_parts(viewfile_href, result_line.parts);
   const line_of_code = clone_template("line-of-code-template");
-  line_of_code.querySelector(".line")!.append(line.element);
+  line_of_code.querySelector(".line")!.append(processed_line.element);
   const line_number_element = line_of_code.querySelector(".line-number")!;
-  const line_number_str = line_number.toString();
-  if (line.is_match) {
+  if (processed_line.is_match) {
     const fmt_line_number = document.createElement("a");
-    fmt_line_number.href = viewfile_endpoint(filepath, line_number_str);
+    fmt_line_number.href = viewfile_href;
     fmt_line_number.textContent = line_number_str;
     line_number_element.append(fmt_line_number);
   }

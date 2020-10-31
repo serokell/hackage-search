@@ -127,6 +127,7 @@ details > summary::-webkit-details-marker { display: none; }
 .match {
   background-color: $bright-color;
   color: white;
+  text-decoration: none;
 }
 
 .line-number {
@@ -220,7 +221,7 @@ hr {
 }
 
 .line-number a, .line-number a:visited {
-  color: inherit;
+  color: $bright-color;
 }
 
 .controls button:hover {
