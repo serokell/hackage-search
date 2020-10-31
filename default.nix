@@ -26,6 +26,7 @@ let
       p.tar
       p.unix
       p.uuid
+      p.unagi-chan
     ]);
 
   backendInputs = [
