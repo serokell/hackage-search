@@ -622,13 +622,14 @@ renderFile userfilepath s = H.docTypeHtml $ do
     cssStyle =
       "body{background:#fdf6e3}\
       \body,pre{margin:0}\
-      \table{border-collapse:collapse}\
+      \table{border-collapse:collapse;border-right:1px solid #efe9d7}\
       \td:first-child{user-select:none;\
                      \background:#eee;\
                      \color:#888;\
                      \text-align:right;\
                      \padding:3px}\
-      \td{padding-left:10px}"
+      \td{padding-left:10px}\
+      \:target{background:#e3301b;color:white}"
 
 lineNumbers :: [String]
 lineNumbers = map show [1 :: Word ..]
