@@ -166,7 +166,7 @@ retryIf p (n, d) act = go n
 rgSearch :: Config -> String -> IO RgLineHandle
 rgSearch config rg_pattern = do
   package_ids <- readManifest config
-  let rg_opts = ["--json", "--no-ignore", "--context", "2", "--regexp", rg_pattern]
+  let rg_opts = ["--json", "--no-ignore", "--context", "2", "--sort", "path", "--regexp", rg_pattern]
   (_, Just hOut, Just hErr, p) <-
     createProcess ((proc "rg" (rg_opts ++ package_ids))
       { cwd = Just (packagesPath config),
