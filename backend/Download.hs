@@ -33,6 +33,7 @@ import qualified Data.Time.Clock as Time
 import Control.Concurrent.Async (forConcurrently_, concurrently_)
 import System.FilePath
 import System.Directory
+import System.IO
 import System.IO.Error
 import System.Exit (die)
 
@@ -54,7 +55,7 @@ main = do
     Opt.info (configOptP <**> Opt.helper)
       (Opt.fullDesc <> Opt.header "Hackage Download")
   http_manager <- HTTP.newTlsManager
-  withLogger (downloadHackage config http_manager)
+  withLogger stderr (downloadHackage config http_manager)
 
 downloadHackage :: Config -> HTTP.Manager -> Logger -> IO ()
 downloadHackage config http_manager logger = do
@@ -272,15 +273,15 @@ newtype Logger = Logger { log :: LogMessage -> IO () }
 
 data LogAction = LogPut String | EndLogging
 
-withLogger :: (Logger -> IO ()) -> IO ()
-withLogger cont = do
+withLogger :: Handle -> (Logger -> IO ()) -> IO ()
+withLogger hndl cont = do
   (inChan, outChan) <- Chan.newChan
   let logger = mkLogger inChan
       worker =
         Chan.readChan outChan >>= \m_msg ->
         case m_msg of
           EndLogging -> return ()
-          LogPut msg -> putStrLn msg >> worker
+          LogPut msg -> hPutStrLn hndl msg >> worker
       action = cont logger
         `finally` Chan.writeChan inChan EndLogging
   concurrently_ worker action
