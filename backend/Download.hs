@@ -10,7 +10,6 @@ import Control.Applicative
 import Control.Monad
 import Data.IORef
 import Data.Maybe (mapMaybe)
-import Data.String (fromString)
 import qualified Options.Applicative as Opt
 import qualified Data.List.Split as List
 import qualified Network.HTTP.Client as HTTP
@@ -59,33 +58,20 @@ main = do
 
 downloadHackage :: Config -> HTTP.Manager -> Logger -> IO ()
 downloadHackage config http_manager logger = do
-  log logger LogIndexDownload
-  all_package_ids <- requestPackages config http_manager logger
-  log logger (LogIndexedPackageCount (length all_package_ids))
-  (blacklisted_package_ids, nonblacklisted_package_ids) <- partitionBlacklisted config all_package_ids
-  log logger (LogBlacklistedPackageCount (Set.size blacklisted_package_ids))
-  log logger (LogIndexedNonBlacklistedPackageCount (length nonblacklisted_package_ids))
-  (missing_package_ids, ondisk_package_ids) <- partitionCached config nonblacklisted_package_ids
-  log logger (LogOndiskPackageCount (length ondisk_package_ids))
-  log logger (LogMissingPackageCount (length missing_package_ids))
-  let scheduled_package_ids = takeMaybe (configLimit config) missing_package_ids
-  log logger (LogScheduledPackageCount (length scheduled_package_ids))
+  all_package_ids <- requestPackages http_manager logger
+  nonblacklisted_package_ids <- removeBlacklisted config logger all_package_ids
+  (missing_package_ids, ondisk_package_ids) <- partitionCached config logger nonblacklisted_package_ids
+  scheduled_package_ids <- limitPackages config logger missing_package_ids
   bad_package_ids_ref <- newIORef Set.empty
   forConcurrentlyInBuckets_ logger scheduled_package_ids $ \package_id -> do
     skipKnownFailures
       (atomicModifyIORef' bad_package_ids_ref (\acc -> (Set.insert package_id acc, ())))
-      (do log logger (LogPackageDownloadStart package_id)
-          downloadPackage config http_manager package_id
-          log logger (LogPackageDownloadEnd package_id))
+      (downloadPackage config logger http_manager package_id)
   bad_package_ids <- readIORef bad_package_ids_ref
   let downloaded_package_ids = Set.fromList scheduled_package_ids `Set.difference` bad_package_ids
       available_package_ids = Set.fromList ondisk_package_ids `Set.union` downloaded_package_ids
   updateBlacklist config bad_package_ids
   updateManifest config available_package_ids
-
-takeMaybe :: Maybe Int -> [a] -> [a]
-takeMaybe Nothing = id
-takeMaybe (Just k) = take k
 
 updateBlacklist :: Config -> Set.Set Cabal.PackageId -> IO ()
 updateBlacklist config package_ids =
@@ -105,8 +91,12 @@ updateManifest config package_ids = do
       manifest_init_path
       manifest_path
 
-partitionCached :: Config -> [Cabal.PackageId] -> IO ([Cabal.PackageId], [Cabal.PackageId])
-partitionCached config = partitionM (doesPathExist . packagePath config)
+partitionCached :: Config -> Logger -> [Cabal.PackageId] -> IO ([Cabal.PackageId], [Cabal.PackageId])
+partitionCached config logger package_ids = do
+  (missing_package_ids, ondisk_package_ids) <- partitionM (doesPathExist . packagePath config) package_ids
+  log logger (LogOndiskPackageCount (length ondisk_package_ids))
+  log logger (LogMissingPackageCount (length missing_package_ids))
+  return (missing_package_ids, ondisk_package_ids)
 
 partitionM :: Monad m => (a -> m Bool) -> [a] -> m ([a], [a])
 partitionM check = foldM go ([], [])
@@ -116,6 +106,16 @@ partitionM check = foldM go ([], [])
       case b of
         False -> (item : acc_false, acc_true)
         True  -> (acc_false, item : acc_true)
+
+limitPackages :: Config -> Logger -> [Cabal.PackageId] -> IO [Cabal.PackageId]
+limitPackages config logger package_ids = do
+  let scheduled_package_ids = takeMaybe (configLimit config) package_ids
+  log logger (LogScheduledPackageCount (length scheduled_package_ids))
+  return scheduled_package_ids
+
+takeMaybe :: Maybe Int -> [a] -> [a]
+takeMaybe Nothing = id
+takeMaybe (Just k) = take k
 
 packagesPath :: Config -> FilePath
 packagesPath config = configHackagePath config </> "packages"
@@ -141,8 +141,9 @@ skipKnownFailures on_fail =
       = Just ()
     isLegalReasons _ = Nothing
 
-requestPackages :: Config -> HTTP.Manager -> Logger -> IO [Cabal.PackageId]
-requestPackages config http_manager logger = do
+requestPackages :: HTTP.Manager -> Logger -> IO [Cabal.PackageId]
+requestPackages http_manager logger = do
+  log logger LogIndexDownload
   tar_gz_req <-
     fmap HTTP.setRequestCheckStatus $
     HTTP.parseRequest "https://hackage.haskell.org/01-index.tar.gz"
@@ -151,16 +152,21 @@ requestPackages config http_manager logger = do
       tar_content = GZip.decompress tar_gz_content
   case getPackageIds tar_content of
     Nothing -> die "requestPackages: could not parse the index archive"
-    Just package_ids -> return package_ids
+    Just package_ids -> do
+      log logger (LogIndexedPackageCount (length package_ids))
+      return package_ids
 
-partitionBlacklisted :: Config -> [Cabal.PackageId] -> IO (Set.Set Cabal.PackageId, [Cabal.PackageId])
-partitionBlacklisted config package_ids = do
+removeBlacklisted :: Config -> Logger -> [Cabal.PackageId] -> IO [Cabal.PackageId]
+removeBlacklisted config logger package_ids = do
   blacklist <-
     handleJust (\e -> if isDoesNotExistError e then Just Set.empty else Nothing) return $
     fmap (Set.fromList . mapMaybe Cabal.simpleParsec . lines) $
     readFile (configHackagePath config </> "blacklist")
+  log logger (LogBlacklistedPackageCount (Set.size blacklist))
   let blacklisted package_id = Set.member package_id blacklist
-  return (blacklist, filterOut blacklisted package_ids)
+      nonblacklisted_package_ids = filterOut blacklisted package_ids
+  log logger (LogIndexedNonBlacklistedPackageCount (length nonblacklisted_package_ids))
+  return nonblacklisted_package_ids
 
 filterOut :: (a -> Bool) -> [a] -> [a]
 filterOut f = filter (not . f)
@@ -250,8 +256,9 @@ withObjectPath config =
       createDirectoryIfMissing True object_path
       return object_path
 
-downloadPackage :: Config -> HTTP.Manager -> Cabal.PackageId -> IO ()
-downloadPackage config http_manager package_id = do
+downloadPackage :: Config -> Logger -> HTTP.Manager -> Cabal.PackageId -> IO ()
+downloadPackage config logger http_manager package_id = do
+  log logger (LogPackageDownloadStart package_id)
   withObjectPath config $ \package_object_path -> do
     package_files <- downloadPackageArchive http_manager package_id
     traverse_ (writePackageFile package_object_path) package_files
@@ -259,6 +266,7 @@ downloadPackage config http_manager package_id = do
     POSIX.rename -- NB. atomic
       (package_object_path </> Cabal.prettyShow package_id)
       (packagePath config package_id)
+  log logger (LogPackageDownloadEnd package_id)
 
 newtype Logger = Logger { log :: LogMessage -> IO () }
 
