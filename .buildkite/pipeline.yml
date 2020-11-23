@@ -1,0 +1,11 @@
+steps:
+  - label: Check Nix flake
+    commands:
+      - nix-shell --run 'nix flake check'
+
+  - wait
+
+  - label: Deploy
+    commands:
+      - nix-shell --run 'deploy'
+    branches: "release"
