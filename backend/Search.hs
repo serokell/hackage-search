@@ -4,40 +4,51 @@
 
 module Main (main) where
 
-import System.IO
-import System.IO.Error
-import Control.Applicative
-import Control.Monad
+import Control.Applicative ((<|>), (<**>))
 import Control.Concurrent (threadDelay)
-import Servant
-import Servant.Types.SourceT
-import Servant.HTML.Blaze (HTML)
-import Network.Wai.Handler.Warp
-import Data.Monoid
-import qualified Network.Socket
-import qualified Data.Streaming.Network
-import qualified Options.Applicative as Opt
-import System.Process
 import Control.DeepSeq (rnf)
 import Control.Exception hiding (Handler)
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Maybe
-import Data.Text (Text)
+import Control.Monad (forM_, guard)
+import Control.Monad.Except (throwError)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
+import qualified Data.Aeson as JSON
+import qualified Data.Aeson.Encoding.Internal as JSON (list, pairStr)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Builder as ByteString.Builder
+import qualified Data.ByteString.Lazy as ByteString.Lazy
+import qualified Data.Map as Map
+import Data.Monoid (Endo(..))
+import Data.Streaming.Network (bindPath)
+import qualified Data.Streaming.Network
+import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified Data.Text.IO as Text
-import qualified Data.Aeson as JSON
-import qualified Data.Aeson.Encoding.Internal as JSON (pairStr, list)
-import qualified Data.ByteString.Builder as ByteString.Builder
-import qualified Data.ByteString.Lazy as ByteString.Lazy
-import System.FilePath ((</>))
-import qualified System.FilePath as FilePath
 import qualified Distribution.Package as Cabal
 import qualified Distribution.Parsec as Cabal
 import qualified Distribution.Pretty as Cabal
-import qualified Data.Map as Map
+import qualified Network.Socket
+import Network.Wai.Handler.Warp (defaultSettings, run, runSettingsSocket)
+import qualified Options.Applicative as Opt
+import Prometheus (register)
+import Prometheus.Metric.GHC (ghcMetrics)
+import Servant ((:<|>)(..), Proxy(..), StreamGet, serveDirectoryFileServer)
+import Servant.API ((:>), Capture, CaptureAll, Get, NewlineFraming, PlainText, Raw, ToSourceIO(..))
+import Servant.HTML.Blaze (HTML)
+import Servant.Prometheus (meters, monitorServant)
+import Servant.Prometheus.Export (WithMetrics, withMetrics)
+import Servant.Server (Application, Server, err400, serve)
+import Servant.Types.SourceT (StepT(..), fromStepT)
+import System.FilePath ((</>))
+import qualified System.FilePath as FilePath
+import System.IO (Handle, hClose, hIsEOF, readFile)
+import System.IO.Error (isDoesNotExistError)
+import System.Process
+  ( ProcessHandle, StdStream(..), createProcess, cwd, proc, std_err, std_in,  std_out
+  , terminateProcess
+  )
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as H.A
 
@@ -57,6 +68,10 @@ type HackageSearchAPI =
 
 hackageSearchAPI :: Proxy HackageSearchAPI
 hackageSearchAPI = Proxy
+
+-- | Proxy for 'HackageSearchAPI' wih additional metrics.
+metricsApiProxy :: Proxy (WithMetrics HackageSearchAPI)
+metricsApiProxy = Proxy
 
 data RgLineHandle =
   RgLineHandle
@@ -209,11 +224,14 @@ configOptP = do
 
 main :: IO ()
 main = do
+  register ghcMetrics
   config@Config{configBindTarget} <-
     Opt.execParser $
       Opt.info (configOptP <**> Opt.helper)
         (Opt.fullDesc <> Opt.header "Hackage Search")
-  runServer configBindTarget (serve hackageSearchAPI (hackageSearchServer config))
+  mtrs <- register $ meters metricsApiProxy
+  runServer configBindTarget . monitorServant mtrs . serve metricsApiProxy .
+    withMetrics hackageSearchAPI $ hackageSearchServer config
 
 data BindTarget
   = BindOnPort Int

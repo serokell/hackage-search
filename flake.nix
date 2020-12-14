@@ -14,9 +14,14 @@
 
     deploy-rs.url = "github:serokell/deploy-rs";
     deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
+
+    servant-prometheus = {
+      url = "github:serokell/servant-prometheus";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, serokell-nix, flake-utils, deploy-rs, ... }@inputs:
+  outputs = { self, nixpkgs, serokell-nix, flake-utils, deploy-rs, servant-prometheus, ... }@inputs:
     let
       inherit (nixpkgs.lib) recursiveUpdate makeLibraryPath;
       inherit (builtins) mapAttrs;
@@ -24,7 +29,7 @@
     recursiveUpdate (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system}.extend serokell-nix.overlay;
-        p = import ./package.nix { inherit pkgs; };
+        p = import ./package.nix { inherit pkgs; servant-prometheus = import servant-prometheus { nixpkgs = pkgs; }; };
       in {
         defaultPackage = self.packages.${system}.hackage-search;
         packages.hackage-search = pkgs.buildEnv {

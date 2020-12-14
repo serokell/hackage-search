@@ -1,4 +1,5 @@
 { pkgs
+, servant-prometheus
 , hc ? "ghc884"
 }:
 
@@ -16,11 +17,14 @@ let
       p.servant-server
       p.servant-blaze
       p.http-client-tls
+      p.prometheus-client
+      p.prometheus-metrics-ghc
       p.split
       p.tar
       p.unix
       p.uuid
       p.unagi-chan
+      servant-prometheus
     ]);
 
   backendInputs = [
