@@ -431,7 +431,8 @@
           "nixpkgs"
         ],
         "serokell-nix": "serokell-nix",
-        "serokell-website": "serokell-website"
+        "serokell-website": "serokell-website",
+        "servant-prometheus": "servant-prometheus"
       }
     },
     "serokell-nix": {
@@ -498,6 +499,22 @@
       "original": {
         "type": "git",
         "url": "ssh://git@github.com/serokell/serokell-website"
+      }
+    },
+    "servant-prometheus": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1607950552,
+        "narHash": "sha256-Y7B/0pfcmfeAWs0f1A5wuNTRSa/YN8MMlxl3jI+YfQI=",
+        "owner": "serokell",
+        "repo": "servant-prometheus",
+        "rev": "bb6b2fa789be01b0994130dea7fe35db92362447",
+        "type": "github"
+      },
+      "original": {
+        "owner": "serokell",
+        "repo": "servant-prometheus",
+        "type": "github"
       }
     },
     "utils": {
