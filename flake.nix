@@ -45,7 +45,6 @@
         devShell = pkgs.mkShell rec {
           buildInputs = [
             pkgs.nixUnstable
-            deploy-rs.defaultPackage.${system}
           ] ++ p.shellExtraInputs;
 
           shellHook = ''
