@@ -20,7 +20,6 @@ import qualified Data.ByteString.Builder as ByteString.Builder
 import qualified Data.ByteString.Lazy as ByteString.Lazy
 import qualified Data.Map as Map
 import Data.Monoid (Endo(..))
-import Data.Streaming.Network (bindPath)
 import qualified Data.Streaming.Network
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -38,7 +37,7 @@ import Servant ((:<|>)(..), Proxy(..), StreamGet, serveDirectoryFileServer)
 import Servant.API ((:>), Capture, CaptureAll, Get, NewlineFraming, PlainText, Raw, ToSourceIO(..))
 import Servant.HTML.Blaze (HTML)
 import Servant.Prometheus (meters, monitorServant)
-import Servant.Prometheus.Export (WithMetrics, withMetrics)
+import Servant.Prometheus.Export (MetricsApi, serveMetrics)
 import Servant.Server (Application, Server, err400, serve)
 import Servant.Types.SourceT (StepT(..), fromStepT)
 import System.FilePath ((</>))
@@ -60,6 +59,8 @@ data Config =
   }
 
 type HackageSearchAPI =
+    MetricsApi
+  :<|>
     "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText RgLineHandle
   :<|>
     "viewfile" :> CaptureAll "segments" String :> Get '[HTML] H.Html
@@ -68,10 +69,6 @@ type HackageSearchAPI =
 
 hackageSearchAPI :: Proxy HackageSearchAPI
 hackageSearchAPI = Proxy
-
--- | Proxy for 'HackageSearchAPI' wih additional metrics.
-metricsApiProxy :: Proxy (WithMetrics HackageSearchAPI)
-metricsApiProxy = Proxy
 
 data RgLineHandle =
   RgLineHandle
@@ -127,7 +124,7 @@ every next result.
 
 hackageSearchServer :: Config -> Server HackageSearchAPI
 hackageSearchServer config =
-  searchH :<|> viewfileH :<|> frontendH
+  serveMetrics :<|> searchH :<|> viewfileH :<|> frontendH
   where
     searchH q = liftIO (rgSearch config q)
     viewfileH q = do
@@ -229,9 +226,9 @@ main = do
     Opt.execParser $
       Opt.info (configOptP <**> Opt.helper)
         (Opt.fullDesc <> Opt.header "Hackage Search")
-  mtrs <- register $ meters metricsApiProxy
-  runServer configBindTarget . monitorServant mtrs . serve metricsApiProxy .
-    withMetrics hackageSearchAPI $ hackageSearchServer config
+  mtrs <- register $ meters hackageSearchAPI
+  runServer configBindTarget . monitorServant mtrs . serve hackageSearchAPI $
+    hackageSearchServer config
 
 data BindTarget
   = BindOnPort Int
