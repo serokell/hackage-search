@@ -94,8 +94,8 @@ in {
     services.nginx.virtualHosts.hackage-search = {
       locations."/".proxyPass =
         if ! isNull cfg.socket
-        then "http://unix:${cfg.socket}:/"
-        else "http://localhost:${toString cfg.port}/";
+        then "http://unix:${cfg.socket}:"
+        else "http://localhost:${toString cfg.port}";
 
       locations."/static/fonts/".alias = "${cfg.package}/fonts/";
     };
