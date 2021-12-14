@@ -625,6 +625,7 @@ renderFile :: FilePath -> String -> H.Html
 renderFile userfilepath s = H.docTypeHtml $ do
   H.head $ do
     H.title (H.toHtml ("Hackage Search: " ++ userfilepath))
+    H.meta H.! H.A.name (H.stringValue "viewport") H.! H.A.content (H.stringValue "width=device-width, initial-scale=1")
     H.style (H.preEscapedToHtml cssStyle)
   H.body $ do
     H.pre $ H.table $ do
@@ -637,6 +638,7 @@ renderFile userfilepath s = H.docTypeHtml $ do
     cssStyle =
       "body{background:#fdf6e3}\
       \body,pre{margin:0}\
+      \pre{overflow-x:auto}\
       \table{border-collapse:collapse;border-right:1px solid #efe9d7}\
       \td:first-child{user-select:none;\
                      \background:#eee;\
