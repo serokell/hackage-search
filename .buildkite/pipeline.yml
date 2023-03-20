@@ -7,6 +7,6 @@ steps:
 
   - label: Deploy
     commands:
-      - nix run -f. inputs.deploy-rs.defaultPackage.x86_64-linux
+      - nix shell -f. inputs.deploy-rs.defaultPackage.x86_64-linux
           -c deploy
     branches: "release"
