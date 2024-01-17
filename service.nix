@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2020 Serokell <https://serokell.io/>
+# SPDX-FileCopyrightText: 2020-2023 Serokell <https://serokell.io/>
 #
 # SPDX-License-Identifier: MPL-2.0
 
@@ -45,9 +45,15 @@ in {
         startAt = "daily";
         script = ''hackage-download --hackage "$CACHE_DIRECTORY"'';
 
+        startLimitBurst = mkDefault 5;
+        startLimitIntervalSec = mkDefault 300;
+
         serviceConfig = {
           DynamicUser = true;
           User = "hackage-search";
+
+          Restart = mkDefault "on-failure";
+          RestartSec = mkDefault 10;
 
           CacheDirectory = "hackage-search";
           WorkingDirectory = "/var/cache/hackage-search";
@@ -72,9 +78,15 @@ in {
             hackage-search ${serve} --frontend "${cfg.package}/html" --hackage "$CACHE_DIRECTORY"
           '';
 
+        startLimitBurst = mkDefault 5;
+        startLimitIntervalSec = mkDefault 300;
+
         serviceConfig = {
           DynamicUser = true;
           User = "hackage-search";
+
+          Restart = mkDefault "on-failure";
+          RestartSec = mkDefault 10;
 
           ExecStartPost =
             if isNull cfg.socket
