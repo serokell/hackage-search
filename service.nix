@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2020-2023 Serokell <https://serokell.io/>
 #
 # SPDX-License-Identifier: MPL-2.0
-
+{ serokell-nix }:
 { config, lib, pkgs, ... }:
 with lib;
 let
   cfg = config.services.hackage-search;
+  inherit (serokell-nix.lib.systemd) hardeningProfiles withHardeningProfile;
 in {
   options.services.hackage-search = {
     enable = mkEnableOption "Hackage search server";
@@ -81,7 +82,7 @@ in {
         startLimitBurst = mkDefault 5;
         startLimitIntervalSec = mkDefault 300;
 
-        serviceConfig = {
+        serviceConfig = withHardeningProfile hardeningProfiles.backend {
           DynamicUser = true;
           User = "hackage-search";
 
