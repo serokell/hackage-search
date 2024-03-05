@@ -60,7 +60,7 @@
       }))
 
     {
-      module = import ./service.nix;
+      module = import ./service.nix { inherit serokell-nix; };
 
       # Deployment expressions
       deploy.magicRollback = false;
