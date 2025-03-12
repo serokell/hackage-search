@@ -19,7 +19,6 @@ let
       p.http-client-tls
       p.prometheus-client
       p.prometheus-metrics-ghc
-      p.split
       p.tar
       p.unix
       p.uuid
