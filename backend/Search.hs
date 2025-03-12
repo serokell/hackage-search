@@ -25,6 +25,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified Data.Text.IO as Text
+import Data.String (fromString)
 import qualified Distribution.Package as Cabal
 import qualified Distribution.Parsec as Cabal
 import qualified Distribution.Pretty as Cabal
@@ -268,8 +269,8 @@ data RgOut
 instance JSON.FromJSON RgOut where
   parseJSON =
     JSON.withObject "RgOut" $ \j -> do
-      t <- j JSON..: Text.pack "type"
-      d <- j JSON..: Text.pack "data"
+      t <- j JSON..: fromString "type"
+      d <- j JSON..: fromString "data"
       parseDataJSON t d
     where
       parseDataJSON "begin"   = parseBeginJSON
@@ -281,16 +282,16 @@ instance JSON.FromJSON RgOut where
 
       parseBeginJSON =
         JSON.withObject "RgOutBegin" $ \j -> do
-          rg_out_begin_path <- j JSON..: Text.pack "path"
+          rg_out_begin_path <- j JSON..: fromString "path"
           pure RgOutBegin{ rg_out_begin_path }
 
       parseMatchOrContextJSON =
         JSON.withObject "RgOutMatch" $ \j -> do
-          rg_out_match_path <- j JSON..: Text.pack "path"
-          rg_out_match_lines <- j JSON..: Text.pack "lines"
-          rg_out_match_line_number <- j JSON..: Text.pack "line_number"
-          rg_out_match_absolute_offset <- j JSON..: Text.pack "absolute_offset"
-          rg_out_match_submatches <- j JSON..: Text.pack "submatches"
+          rg_out_match_path <- j JSON..: fromString "path"
+          rg_out_match_lines <- j JSON..: fromString "lines"
+          rg_out_match_line_number <- j JSON..: fromString "line_number"
+          rg_out_match_absolute_offset <- j JSON..: fromString "absolute_offset"
+          rg_out_match_submatches <- j JSON..: fromString "submatches"
           pure RgOutMatch{
             rg_out_match_path,
             rg_out_match_lines,
@@ -301,8 +302,8 @@ instance JSON.FromJSON RgOut where
 
       parseEndJSON =
         JSON.withObject "RgOutEnd" $ \j -> do
-          rg_out_end_path <- j JSON..: Text.pack "path"
-          rg_out_end_stats <- j JSON..: Text.pack "stats"
+          rg_out_end_path <- j JSON..: fromString "path"
+          rg_out_end_stats <- j JSON..: fromString "stats"
           pure RgOutEnd{
               rg_out_end_path,
               rg_out_end_stats
@@ -310,8 +311,8 @@ instance JSON.FromJSON RgOut where
 
       parseSummaryJSON =
         JSON.withObject "RgOutSummary" $ \j -> do
-          rg_out_summary_elapsed_total <- j JSON..: Text.pack "elapsed_total"
-          rg_out_summary_stats <- j JSON..: Text.pack "stats"
+          rg_out_summary_elapsed_total <- j JSON..: fromString "elapsed_total"
+          rg_out_summary_stats <- j JSON..: fromString "stats"
           pure RgOutSummary{
               rg_out_summary_elapsed_total,
               rg_out_summary_stats
@@ -327,9 +328,9 @@ data RgOutSubmatch =
 instance JSON.FromJSON RgOutSubmatch where
   parseJSON =
     JSON.withObject "RgOutSubmatch" $ \j -> do
-      -- rg_out_submatch_match <- j JSON..: Text.pack "match"
-      rg_out_submatch_start <- j JSON..: Text.pack "start"
-      rg_out_submatch_end <- j JSON..: Text.pack "end"
+      -- rg_out_submatch_match <- j JSON..: fromString "match"
+      rg_out_submatch_start <- j JSON..: fromString "start"
+      rg_out_submatch_end <- j JSON..: fromString "end"
       pure RgOutSubmatch{
           -- rg_out_submatch_match,
           rg_out_submatch_start,
@@ -350,13 +351,13 @@ data RgOutStats =
 instance JSON.FromJSON RgOutStats where
   parseJSON =
     JSON.withObject "RgOutStats" $ \j -> do
-      rg_out_stats_elapsed <- j JSON..: Text.pack "elapsed"
-      rg_out_stats_searches <- j JSON..: Text.pack "searches"
-      rg_out_stats_searches_with_match <- j JSON..: Text.pack "searches_with_match"
-      rg_out_stats_bytes_searched <- j JSON..: Text.pack "bytes_searched"
-      rg_out_stats_bytes_printed <- j JSON..: Text.pack "bytes_printed"
-      rg_out_stats_matched_lines <- j JSON..: Text.pack "matched_lines"
-      rg_out_stats_matches <- j JSON..: Text.pack "matches"
+      rg_out_stats_elapsed <- j JSON..: fromString "elapsed"
+      rg_out_stats_searches <- j JSON..: fromString "searches"
+      rg_out_stats_searches_with_match <- j JSON..: fromString "searches_with_match"
+      rg_out_stats_bytes_searched <- j JSON..: fromString "bytes_searched"
+      rg_out_stats_bytes_printed <- j JSON..: fromString "bytes_printed"
+      rg_out_stats_matched_lines <- j JSON..: fromString "matched_lines"
+      rg_out_stats_matches <- j JSON..: fromString "matches"
       pure RgOutStats{
           rg_out_stats_elapsed,
           rg_out_stats_searches,
@@ -377,9 +378,9 @@ data RgOutDuration =
 instance JSON.FromJSON RgOutDuration where
   parseJSON =
     JSON.withObject "RgOutDuration" $ \j -> do
-      rg_out_duration_human <- j JSON..: Text.pack "human"
-      rg_out_duration_nanos <- j JSON..: Text.pack "nanos"
-      rg_out_duration_secs <- j JSON..: Text.pack "secs"
+      rg_out_duration_human <- j JSON..: fromString "human"
+      rg_out_duration_nanos <- j JSON..: fromString "nanos"
+      rg_out_duration_secs <- j JSON..: fromString "secs"
       pure RgOutDuration{
           rg_out_duration_human,
           rg_out_duration_nanos,
@@ -393,11 +394,11 @@ data RgOutData
 instance JSON.FromJSON RgOutData where
   parseJSON =
     JSON.withObject "RgOutData" $ \j -> do
-      m_rg_text <- j JSON..:? Text.pack "text"
+      m_rg_text <- j JSON..:? fromString "text"
       case m_rg_text of
         Just rg_text -> return (RgOutDataText rg_text)
         Nothing -> do
-          rg_bytes <- j JSON..: Text.pack "bytes"
+          rg_bytes <- j JSON..: fromString "bytes"
           return (RgOutDataBytes rg_bytes)
 
 --------------------------- Processing rg output -------------------------------

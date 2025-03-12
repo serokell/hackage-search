@@ -27,7 +27,7 @@ main = do
       "--outFile", "all.js" ]
   js_out <-
     readProcess "closure-compiler"
-      [ "--language_in", "ECMASCRIPT6_STRICT",
+      [ "--language_in", "ECMASCRIPT_2021",
         "all.js" ]
       ""
   css_out <-

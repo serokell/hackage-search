@@ -1,14 +1,14 @@
 { pkgs
 , servant-prometheus
-, hc ? "ghc884"
+, hc ? "ghc94"
 }:
 
 let
 
   haskellPackages =
     pkgs.haskell.packages.${hc}.override {
-      overrides = self: super: rec {
-        /* No overrides needed for now */
+      overrides = self: super: {
+        servant-prometheus = servant-prometheus hc;
       };
     };
 
@@ -23,7 +23,7 @@ let
       p.unix
       p.uuid
       p.unagi-chan
-      servant-prometheus
+      p.servant-prometheus
     ]);
 
   backendInputs = [
@@ -31,7 +31,7 @@ let
     pkgs.cabal-install
     pkgs.git
     pkgs.zlib
-    pkgs.pkgconfig
+    pkgs.pkg-config
   ];
 
   frontendInputs = [
