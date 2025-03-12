@@ -29,7 +29,7 @@
     recursiveUpdate (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system}.extend serokell-nix.overlay;
-        p = import ./package.nix { inherit pkgs; servant-prometheus = import servant-prometheus { nixpkgs = pkgs; }; };
+        p = import ./package.nix { inherit pkgs; servant-prometheus = compiler: import servant-prometheus { nixpkgs = pkgs; inherit compiler; }; };
       in {
         defaultPackage = self.packages.${system}.hackage-search;
         packages.hackage-search = pkgs.buildEnv {

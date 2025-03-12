@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es6",
+    "target": "es2021",
     "strict": true,
     "lib": ["es2017", "esnext.asynciterable", "dom"]
   },
