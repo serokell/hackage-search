@@ -11,7 +11,6 @@ import Control.Monad
 import Data.IORef
 import Data.Maybe (mapMaybe)
 import qualified Options.Applicative as Opt
-import qualified Data.List.Split as List
 import qualified Network.HTTP.Client as HTTP
 import qualified Network.HTTP.Client.TLS as HTTP
 import qualified Network.HTTP.Types as HTTP
@@ -31,6 +30,7 @@ import qualified Data.Set as Set
 import qualified Control.Concurrent.Chan.Unagi as Chan
 import qualified Data.Time.Clock as Time
 import Control.Concurrent.Async (forConcurrently_, concurrently_)
+import Control.Concurrent.QSem (newQSem, waitQSem, signalQSem)
 import System.FilePath
 import System.Directory
 import System.IO
@@ -64,7 +64,7 @@ downloadHackage config http_manager logger = do
   (missing_package_ids, ondisk_package_ids) <- partitionCached config logger nonblacklisted_package_ids
   scheduled_package_ids <- limitPackages config logger missing_package_ids
   bad_package_ids_ref <- newIORef Set.empty
-  forConcurrentlyInBuckets_ logger scheduled_package_ids $ \package_id -> do
+  forConcurrentlyLimited_ logger scheduled_package_ids $ \package_id -> do
     skipKnownFailures
       (atomicModifyIORef' bad_package_ids_ref (\acc -> (Set.insert package_id acc, ())))
       (downloadPackage config logger http_manager package_id)
@@ -197,13 +197,13 @@ max_on f a b
   | f a > f b = a
   | otherwise = b
 
-forConcurrentlyInBuckets_ :: Logger -> [a] -> (a -> IO ()) -> IO ()
-forConcurrentlyInBuckets_ logger items process_item = do
+forConcurrentlyLimited_ :: Logger -> [a] -> (a -> IO ()) -> IO ()
+forConcurrentlyLimited_ logger items process_item = do
   num_capabilities <- getNumCapabilities
-  let chunk_size = max 1 (length items `div` num_capabilities)
-      buckets = List.chunksOf chunk_size items
-  log logger (LogThreadCount num_capabilities (length buckets))
-  forConcurrently_ buckets (traverse_ process_item)
+  qsem <- newQSem num_capabilities
+  log logger (LogCapabilities num_capabilities (length items))
+  forConcurrently_ items $ \item ->
+    bracket_ (waitQSem qsem) (signalQSem qsem) (process_item item)
 
 data PackageFile =
   PackageFile {
@@ -306,7 +306,7 @@ data LogMessage =
   | LogMissingPackageCount !Int
   | LogScheduledPackageCount !Int
   | LogDownloadedPackageCount !Int
-  | LogThreadCount !Int !Int
+  | LogCapabilities !Int !Int
   | LogPackageDownloadStart Cabal.PackageId
   | LogPackageDownloadEnd Cabal.PackageId
 
@@ -327,9 +327,9 @@ renderLogMessage (LogScheduledPackageCount n) =
   "Scheduled for download packages: " ++ show n
 renderLogMessage (LogDownloadedPackageCount n) =
   "Downloaded packages: " ++ show n
-renderLogMessage (LogThreadCount ncaps buckets) =
-  "Using " ++ show buckets ++ " threads out of " ++
-    show ncaps ++ " available (use +RTS -N to specify)"
+renderLogMessage (LogCapabilities ncaps nitems) =
+  "Processing " ++ show nitems ++ " items using " ++
+    show ncaps ++ " capabilities (use +RTS -N to specify)"
 renderLogMessage (LogPackageDownloadStart package_id) =
   "Starting to download " ++ Cabal.prettyShow package_id
 renderLogMessage (LogPackageDownloadEnd package_id) =
