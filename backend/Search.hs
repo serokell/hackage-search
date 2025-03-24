@@ -34,21 +34,20 @@ import Network.Wai.Handler.Warp (defaultSettings, run, runSettingsSocket)
 import qualified Options.Applicative as Opt
 import Prometheus (register)
 import Prometheus.Metric.GHC (ghcMetrics)
-import Servant ((:<|>)(..), Proxy(..), StreamGet, serveDirectoryFileServer)
-import Servant.API ((:>), Capture, CaptureAll, Get, NewlineFraming, PlainText, Raw, ToSourceIO(..))
+import Servant ((:<|>)(..), Proxy(..), StreamGet, SourceIO, serveDirectoryFileServer)
+import Servant.API ((:>), Capture, CaptureAll, Get, NewlineFraming, PlainText, Raw)
 import Servant.HTML.Blaze (HTML)
 import Servant.Prometheus (meters, monitorServant)
 import Servant.Prometheus.Export (MetricsApi, serveMetrics)
 import Servant.Server (Application, Server, err400, serve)
-import Servant.Types.SourceT (StepT(..), fromStepT)
+import Servant.Types.SourceT (SourceT(..), StepT(..))
 import System.FilePath ((</>))
 import qualified System.FilePath as FilePath
-import System.IO (Handle, hClose, hIsEOF, readFile)
+import System.IO (hIsEOF, readFile)
 import System.IO.Error (isDoesNotExistError)
 import System.Process
-  ( ProcessHandle, StdStream(..), createProcess, cwd, proc, std_err, std_in,  std_out
-  , terminateProcess
-  )
+  ( CreateProcess, withCreateProcess
+  , StdStream(..), cwd, proc, std_err, std_in, std_out )
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as H.A
 
@@ -62,7 +61,7 @@ data Config =
 type HackageSearchAPI =
     MetricsApi
   :<|>
-    "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText RgLineHandle
+    "rg" :> Capture "pattern" String :> StreamGet NewlineFraming PlainText (SourceIO Text)
   :<|>
     "viewfile" :> CaptureAll "segments" String :> Get '[HTML] H.Html
   :<|>
@@ -71,16 +70,11 @@ type HackageSearchAPI =
 hackageSearchAPI :: Proxy HackageSearchAPI
 hackageSearchAPI = Proxy
 
-data RgLineHandle =
-  RgLineHandle
-    ProcessHandle
-    Handle
-    Handle
-
-instance ToSourceIO Text RgLineHandle where
-  toSourceIO (RgLineHandle p hOut hErr) = fromStepT (go 0 processRg)
-    where
-      go i (ProcessRgYield s next) = Yield s (go i next)
+runRg :: CreateProcess -> SourceT IO Text
+runRg create_rg =
+  SourceT $ \k ->
+  withCreateProcess create_rg $ \_ (Just hOut) (Just hErr) _ ->
+  let go i (ProcessRgYield s next) = Yield s (go i next)
       go i (ProcessRgPause next) = Effect $ do
         threadDelay (slowdown i * 1000) -- See Note [Rate limiting]
         return $ go (i+1) next
@@ -89,21 +83,18 @@ instance ToSourceIO Text RgLineHandle where
         if eof then do
           err <- Text.hGetContents hErr
           if Text.null err
-            then return stop
-            else return (Yield (jsonEncodeErr err) stop)
+            then return Stop
+            else return (Yield (jsonEncodeErr err) Stop)
         else do
           s <- Text.hGetLine hOut
           return $
             case JSON.eitherDecode' (ByteString.Lazy.fromStrict (Text.encodeUtf8 s)) of
               Left err -> go i (ProcessRgFail (Text.pack err))
               Right rg_out -> go i (f rg_out)
-      go _ (ProcessRgFail err) = Yield (jsonEncodeErr err) stop
-      go _ (ProcessRgComplete matches) = Yield (jsonEncodeSummary matches) stop
-      stop = Effect $ do
-        terminateProcess p
-        hClose hOut
-        hClose hErr
-        return Stop
+      go _ (ProcessRgFail err) = Yield (jsonEncodeErr err) Stop
+      go _ (ProcessRgComplete matches) = Yield (jsonEncodeSummary matches) Stop
+  in
+    k (go 0 processRg)
 
 -- Input: iteration number
 -- Output: delay in milliseconds
@@ -176,18 +167,16 @@ retryIf p (n, d) act = go n
         (\() -> do threadDelay d; go (k-1))
         act
 
-rgSearch :: Config -> String -> IO RgLineHandle
+rgSearch :: Config -> String -> IO (SourceIO Text)
 rgSearch config rg_pattern = do
   package_ids <- readManifest config
   let rg_opts = ["--json", "--no-ignore", "--context", "2", "--sort", "path", "--regexp", rg_pattern]
-  (_, Just hOut, Just hErr, p) <-
-    createProcess ((proc "rg" (rg_opts ++ package_ids))
+  return $
+    runRg (proc "rg" (rg_opts ++ package_ids))
       { cwd = Just (packagesPath config),
         std_out = CreatePipe,
         std_err = CreatePipe,
-        std_in = NoStream
-      })
-  return (RgLineHandle p hOut hErr)
+        std_in = NoStream }
 
 jsonEncodeErr :: Text -> Text
 jsonEncodeErr err =
