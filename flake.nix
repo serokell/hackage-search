@@ -1,10 +1,10 @@
 {
   description = "Hackage search";
 
+  nixConfig.flake-registry = "https://github.com/serokell/flake-registry/raw/master/flake-registry.json";
   inputs = {
-    serokell-nix.url = "github:serokell/serokell.nix";
-    nixpkgs.follows = "serokell-nix/nixpkgs";
     serokell-website.url = "git+ssh://git@github.com/serokell/serokell-website";
+    serokell-nix.inputs.nixpkgs.follows = "nixpkgs";
 
     flake-utils.url = "github:numtide/flake-utils";
     flake-compat = {
@@ -43,9 +43,7 @@
         };
 
         devShell = pkgs.mkShell rec {
-          buildInputs = [
-            pkgs.nixUnstable
-          ] ++ p.shellExtraInputs;
+          buildInputs = p.shellExtraInputs;
 
           shellHook = ''
             export LD_LIBRARY_PATH=${makeLibraryPath buildInputs}:$LD_LIBRARY_PATH
