@@ -65,7 +65,7 @@ in {
       hackage-search = rec {
         wantedBy = [ "multi-user.target" ];
 
-        requires = [ "hackage-download.service" ];
+        requires = [ "network-online.target" ];
         after = requires;
 
         path = with pkgs; [ ripgrep cfg.package ];
