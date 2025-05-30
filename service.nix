@@ -59,6 +59,10 @@ in {
           CacheDirectory = "hackage-search";
           WorkingDirectory = "/var/cache/hackage-search";
           Type = "oneshot";
+          # This service is a 'PartOf' hackage-search service, so it should not
+          # be considered 'stopped' when it exits. Otherwise, hackage-search
+          # service will be stopped too.
+          RemainAfterExit = true;
         };
       };
 
@@ -66,6 +70,9 @@ in {
         wantedBy = [ "multi-user.target" ];
 
         requires = [ "hackage-download.service" ];
+        # hackage-download may fail due to various reasons (e.g. network issues),
+        # it'll attempt to restart on failure, so we want to restart hackage-search too
+        partOf = requires;
         after = requires;
 
         path = with pkgs; [ ripgrep cfg.package ];
