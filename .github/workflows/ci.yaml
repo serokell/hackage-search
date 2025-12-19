@@ -21,4 +21,4 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Deploy
-        run: nix shell -f. inputs.deploy-rs.defaultPackage.x86_64-linux -c deploy -s
+        run: nix shell -f. inputs.deploy-rs.packages.x86_64-linux.deploy-rs -c deploy -s
