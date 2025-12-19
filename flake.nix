@@ -16,7 +16,7 @@
     deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
 
     servant-prometheus = {
-      url = "github:serokell/servant-prometheus/sereja/ops-1548-relax-warp-bound";
+      url = "github:serokell/servant-prometheus";
       flake = false;
     };
   };

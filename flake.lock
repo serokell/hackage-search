@@ -2855,16 +2855,15 @@
     "servant-prometheus": {
       "flake": false,
       "locked": {
-        "lastModified": 1766025840,
+        "lastModified": 1766140294,
         "narHash": "sha256-sD6OvYiFmumVsvLcmadkjOmRwb01xfGgx1bRc49XA3c=",
         "owner": "serokell",
         "repo": "servant-prometheus",
-        "rev": "b4437efc1b9d8724899c68b2386d70ccc7af2871",
+        "rev": "830f397967626732b4ce7fd6fd56f97ac9df266e",
         "type": "github"
       },
       "original": {
         "owner": "serokell",
-        "ref": "sereja/ops-1548-relax-warp-bound",
         "repo": "servant-prometheus",
         "type": "github"
       }
