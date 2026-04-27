@@ -3,7 +3,6 @@
 
   nixConfig.flake-registry = "https://github.com/serokell/flake-registry/raw/master/flake-registry.json";
   inputs = {
-    serokell-website.url = "git+ssh://git@github.com/serokell/serokell-website";
     serokell-nix.inputs.nixpkgs.follows = "nixpkgs";
 
     flake-utils.url = "github:numtide/flake-utils";
@@ -17,7 +16,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, serokell-nix, flake-utils, deploy-rs, servant-prometheus, ... }@inputs:
+  outputs = { self, nixpkgs, serokell-nix, flake-utils, deploy-rs, servant-prometheus, ... }:
     let
       inherit (nixpkgs.lib) recursiveUpdate makeLibraryPath;
       inherit (builtins) mapAttrs;
@@ -34,7 +33,6 @@
             p.frontend
             p.download
             p.search
-            inputs.serokell-website.packages.x86_64-linux.fonts
           ];
         };
 
