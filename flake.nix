@@ -7,10 +7,6 @@
     serokell-nix.inputs.nixpkgs.follows = "nixpkgs";
 
     flake-utils.url = "github:numtide/flake-utils";
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
-    };
 
     deploy-rs.url = "github:serokell/deploy-rs";
     deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
@@ -41,6 +37,9 @@
             inputs.serokell-website.packages.x86_64-linux.fonts
           ];
         };
+
+        # Pass-through for the deployment tool
+        packages.deploy-rs = deploy-rs.packages.${system}.deploy-rs;
 
         devShell = pkgs.mkShell rec {
           buildInputs = p.shellExtraInputs;
