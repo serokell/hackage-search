@@ -96,8 +96,9 @@ rec {
         runghc "$src/Build.hs" \
           --src "$src" \
           --out "$out/html/index.html"
-        cp "$src/favicon.svg" \
-           "$out/html/favicon.svg"
+        cp "$src/favicon.svg" "$out/html/favicon.svg"
+        mkdir -p "$out/fonts"
+        cp -r "$src/assets/fonts" "$out/"
       '';
       buildInputs = frontendInputs;
       inherit LOCALE_ARCHIVE;

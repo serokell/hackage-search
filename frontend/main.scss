@@ -4,11 +4,22 @@ $light-background-color: #eee;
 $separator-color: #ccc;
 
 @font-face {
+  font-family: 'Kenyan Coffee';
+  src: url('/static/fonts/kenyan-coffee.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
   font-family: 'srk-condensed';
-  src: url('/static/fonts/srk-cond-regular.woff2') format('woff2'),
-       url('/static/fonts/srk-cond-regular.woff') format('woff');
+  src: url('/static/fonts/srk-cond-regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+}
+
+h1 {
+  font-family: 'Kenyan Coffee', sans-serif;
+  font-size: 3em;
 }
 
 body {
