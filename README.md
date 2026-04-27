@@ -3,13 +3,13 @@
 ## Build
 
 ```
-nix-build
+nix build
 ```
 
 ## Development
 
 ```
-nix-shell
+nix develop -c $SHELL
 cd frontend
 tsc --noEmit -w
 ```
