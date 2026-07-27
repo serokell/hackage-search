@@ -141,7 +141,7 @@ function check_response_status(response: Response): void {
 
 async function* read_lines(stream: ReadableStream<Uint8Array>): AsyncIterable<string> {
   const reader = stream.getReader();
-  let buf = new Uint8Array();
+  let buf: Uint8Array = new Uint8Array();
   while (true) {
     let chunk = await reader.read();
     if (chunk.done) break;

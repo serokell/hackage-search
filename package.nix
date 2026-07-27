@@ -36,7 +36,7 @@ let
 
   frontendInputs = [
     ghcWithPackages /* for the build script */
-    pkgs.nodePackages.typescript
+    pkgs.typescript
     pkgs.closurecompiler
     pkgs.sass
   ];
